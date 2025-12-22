@@ -4,15 +4,22 @@ Provides functions that compute past-only technical indicators and price-volume 
 used as inputs to machine-learning models.
 
 Functions:
-    rsi: Relative Strength Index using Wilder smoothing.
-    macd: MACD line, signal line, and histogram.
-    bollinger: Bollinger bands.
-    obv: On-Balance Volume.
-    make_features: Aggregate feature matrix from price and volume data.
-
-Usage:
-    X = make_features(df)
-    # X contains indicators from price and volume data.
+    Technical indicators:
+        rsi: Relative Strength Index using Wilder smoothing.
+        macd: MACD line, signal line, and histogram.
+        bollinger: Bollinger bands.
+    Price-based features:
+        returns:
+        volatility:
+        momentum:
+        trend:
+    Volume-based features:
+        obv: On-Balance Volume.
+        vma: Volume Moving Average.
+        volume volatility:
+    Lag and rolling statistics:
+        lagged values of prices and volume.
+        rolling mean, std, min, max of prices and volume.
 """
 
 import numpy as np
@@ -171,3 +178,47 @@ def macd(
     hist.name = f"MACDhist_{fast}_{slow}_{signal}"
 
     return macd_line, signal_line, hist
+
+
+def bollinger_bands(
+    close: pd.Series,
+    window: int = 20,
+    n_std: float = 2.0,
+) -> pd.DataFrame:
+    """Bollinger Bands.
+
+    Tool to assess the volatility of stocks and other securities, to identify
+    over-valuation or under-valuation. Consists of a center band (Simple Moving Average)
+    and lower and upper bands directed by specific standard deviations.
+
+    Parameters:
+        close (pd.Series): Series of closing prices.
+        window (int, optional): Number of periods to use for calculating the bands, by default 20.
+        n_std (float, optional): Number of standard deviations for the upper and lower bands,
+            by default 2.0.
+        ddof (int, optional): Delta degrees of freedom to compute standard deviation, by default 0.
+        min_periods (int | None, optional): Minimum number of observations required to have a value,
+            by default None.
+
+    Returns:
+        pd.DataFrame: DataFrame containing the Bollinger Bands features
+
+    Sources:
+        Bollinger, J. (2002). *Bollinger on Bollinger Bands.*
+        Investopedia - Bollinger Bands
+            https://www.investopedia.com/terms/b/bollingerbands.asp
+    """
+    mid = mu.sma(close, window)
+    sd = mu.rolling_std(close, window)
+
+    upper = mid + n_std * sd
+    lower = mid - n_std * sd
+
+    return pd.DataFrame(
+        {
+            "bb_mid": mid,
+            "bb_upper": upper,
+            "bb_lower": lower,
+        },
+        index=close.index,
+    )
