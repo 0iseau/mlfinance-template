@@ -22,6 +22,60 @@ def rsi_from_avgs(ag: float, al: float) -> float:
     return 100.0 - (100.0 / (1.0 + rs))
 
 
+def sma(
+    x: pd.Series,
+    window: int,
+    *,
+    min_periods: int | None = None,
+) -> pd.Series:
+    """Compute the Simple Moving Average (SMA).
+
+    Parameters:
+        x (pd.Series): Input data series.
+        window (int): The moving window size.
+        min_periods (int, optional): Minimum number of observations required to have a value.
+
+    Returns:
+        (pd.Series): Series containing the SMA values.
+    """
+    if not isinstance(x, pd.Series):
+        raise TypeError("x must be a pandas Series.")
+    if window <= 0:
+        raise ValueError("window must be positive.")
+
+    mp = window if min_periods is None else min_periods
+    return x.rolling(window=window, min_periods=mp).mean()
+
+
+def rolling_std(
+    x: pd.Series,
+    window: int,
+    *,
+    ddof: int = 0,
+    min_periods: int | None = None,
+) -> pd.Series:
+    """Rolling standard deviation.
+
+    Parameters:
+        x (pd.Series): Input data series.
+        window (int): The moving window size.
+        ddof (int, optional): Delta degrees of freedom to compute standard deviation, by default 0.
+        min_periods (int, optional): Minimum number of observations required to have a value.
+
+    Returns:
+        (pd.Series): Series containing the rolling standard deviation values.
+    """
+    if not isinstance(x, pd.Series):
+        raise TypeError("x must be a pandas Series.")
+    if window <= 0:
+        raise ValueError("window must be positive.")
+    if ddof not in (0, 1):
+        raise ValueError("ddof must be 0 or 1.")
+
+    mp = window if min_periods is None else min_periods
+    return x.rolling(window=window, min_periods=mp).std(ddof=ddof)
+
+
 def ema_alpha_from_span(span: int) -> float:
     """Compute the alpha parameter for Exponential Moving Average (EMA).
 
