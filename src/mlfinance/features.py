@@ -9,7 +9,7 @@ Functions:
         macd: MACD line, signal line, and histogram.
         bollinger: Bollinger bands.
     Price-based features:
-        returns:
+        returns: Simple and log rate of returns.
         volatility:
         momentum:
         trend:
@@ -21,6 +21,8 @@ Functions:
         lagged values of prices and volume.
         rolling mean, std, min, max of prices and volume.
 """
+
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -222,3 +224,67 @@ def bollinger_bands(
         },
         index=close.index,
     )
+
+
+def returns(
+    prices: pd.Series,
+    *,
+    horizons: Sequence[int] = (1, 5, 10, 21),
+    kind: str = "both",
+) -> pd.DataFrame:
+    """Compute log or simple rate of returns of a price series.
+
+    Parameters:
+        prices (pd.Series): Series of prices.
+        kind (str, optional): Type of returns to compute: "simple", "log", or "both".
+            Default is "both".
+        horizons (Sequence[int], optional): Sequence of time horizons (in periods) over
+            which to compute returns. Default is (1, 5, 10, 21).
+
+    Returns:
+        pd.DataFrame: DataFrame containing the computed returns.
+
+    Sources:
+        Gregory Gundersen (06 February 2022). - *Returns and Log Returns.*
+            https://gregorygundersen.com/blog/2022/02/06/log-returns/
+        Investopedia - Rate of Return (ROR)
+            https://www.investopedia.com/terms/r/rateofreturn.asp
+    """
+    prices = validate_prices(prices)
+
+    if prices.empty:
+        return pd.DataFrame(index=prices.index)
+
+    if kind not in {"simple", "log", "both"}:
+        raise ValueError("kind must be one of {'simple', 'log', 'both'}.")
+
+    if not isinstance(horizons, list | tuple) or len(horizons) == 0:
+        raise ValueError("horizons must be a non-empty sequence of positive integers.")
+
+    # horizons validation
+    hs: list[int] = []
+    for h in horizons:
+        if not isinstance(h, int):
+            raise TypeError("Each horizon must be an integer.")
+        if h <= 0:
+            raise ValueError("Each horizon must be a positive integer.")
+        hs.append(h)
+
+    x = pd.to_numeric(prices, errors="coerce").astype(float)
+
+    out: dict[str, pd.Series] = {}
+    for h in hs:
+        shifted = x.shift(h)
+
+        if kind in {"simple", "both"}:
+            # simple return: P_t / P_{t-h} - 1
+            r = x / shifted - 1.0
+            out[f"ret_{h}"] = r
+
+        if kind in {"log", "both"}:
+            # log return: log(P_t / P_{t-h})
+            # Using log(x) - log(shifted) is numerically stable.
+            lr = np.log(x) - np.log(shifted)
+            out[f"logret_{h}"] = lr
+
+    return pd.DataFrame(out, index=prices.index)
