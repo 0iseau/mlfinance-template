@@ -1,0 +1,112 @@
+"""Feature engineering module.
+
+Provides functions that compute technical indicators and price-volume transformations
+used as inputs to machine-learning models.
+
+Functions:
+    rsi: Relative Strength Index using Wilder smoothing.
+    macd: MACD line, signal line, and histogram.
+    bollinger: Bollinger bands.
+    obv: On-Balance Volume.
+    make_features: Aggregate feature matrix from price and volume data.
+
+Usage:
+    X = make_features(df)
+    # X contains indicators from price and volume data.
+"""
+
+import numpy as np
+import pandas as pd
+
+import mlfinance.math_utils as mu
+import mlfinance.validation as val
+
+# Helper functions
+
+
+def rsi(prices: pd.Series[float], window: int = 14) -> pd.Series[float]:
+    """Relative Strength Index (RSI).
+
+    The RSI is a momentum oscillator bounded from 0 to 100 that measures the strength of
+    recent closing-price changes over a specified trading period. It is useful to identify the
+    strength or weakness of a market.
+
+    Calculation :
+        Default input :
+            window = 14
+        RS = Average Gain over window period / Average Loss over window period
+        RSI = 100 - (100 / (1 + RS))
+
+    Parameters
+        prices (pd.Series[float]): Series of closing prices.
+        window (int, optional): Number of periods to use for calculating the RSI, by default 14.
+
+    Returns:
+        rsi (pd.Series[float]): Series containing the RSI values.
+
+    Sources
+        Wilder, J. W. (1978). *New Concepts in Technical Trading Systems*
+        Murphy, J. J. (1999). *Technical Analysis of the Financial Markets*
+        TradingView, “Relative Strength Index (RSI)”.
+            https://www.tradingview.com/support/solutions/43000502338-relative-strength-index-rsi/
+    """
+    # error handling
+    prices = val.validate_prices(prices)
+
+    if not isinstance(window, int):
+        raise TypeError("window must be an integer.")
+    if window <= 0:
+        raise ValueError("window must be a positive integer.")
+
+    # prefill output with NaNs
+    out = pd.Series(
+        np.nan,
+        index=prices.index,
+        dtype=float,
+        name=f"RSI_{window}",
+    )
+
+    # convert to numpy array for speed and split data into valid blocks (without NaNs).
+    # RSI stays NaN over NaN regions
+    x = prices.to_numpy(dtype=float, na_value=np.nan)
+    n = x.size
+    if n == 0:
+        return out
+
+    isnan = np.isnan(x)
+
+    # Process each contiguous block of non-NaN prices independently
+    start = None
+    for i in range(n + 1):
+        if i < n and not isnan[i]:
+            if start is None:
+                start = i
+        else:
+            if start is None:
+                continue
+            end = i  # exclusive
+            block_len = end - start
+            if block_len > window:
+                block = x[start:end]
+                delta = np.diff(block)
+
+                # split gains and losses periods [+2, -1, +3] -> gain=[2,0,3], loss=[0,1,0]
+                gain = np.where(delta > 0.0, delta, 0.0)
+                loss = np.where(delta < 0.0, -delta, 0.0)
+
+                # Seed with simple mean over first `window` changes
+                avg_gain = gain[:window].mean()
+                avg_loss = loss[:window].mean()
+
+                # First RSI value lands at index (start + window)
+                out.iloc[start + window] = mu.rsi_from_avgs(avg_gain, avg_loss)
+
+                # Wilder smoothing, delta[j] ends at price index (start+j+1)
+                for j in range(window, delta.size):
+                    avg_gain = (avg_gain * (window - 1) + gain[j]) / window
+                    avg_loss = (avg_loss * (window - 1) + loss[j]) / window
+                    out.iloc[start + j + 1] = mu.rsi_from_avgs(avg_gain, avg_loss)
+
+            start = None
+
+    return out
