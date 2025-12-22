@@ -15,65 +15,98 @@ Usage:
     # X contains indicators from price and volume data.
 """
 
+import numpy as np
 import pandas as pd
+
+import mlfinance.math_utils as mu
+import mlfinance.validation as val
 
 # Helper functions
 
 
-def rsi(Prices: pd.Series[float], window: int) -> pd.Series[float]:
-    """Computes the Relative Strength Index (RSI) using Wilder smoothing.
+def rsi(prices: pd.Series[float], window: int = 14) -> pd.Series[float]:
+    """Relative Strength Index (RSI).
 
-    Args:
-        Prices (pd.Series): Series of prices.
-        window (int): Lookback period. Default 14.
+    The RSI is a momentum oscillator bounded from 0 to 100 that measures the strength of
+    recent closing-price changes over a specified trading period. It is useful to identify the
+    strength or weakness of a market.
+
+    Calculation :
+        Default input :
+            window = 14
+        RS = Average Gain over window period / Average Loss over window period
+        RSI = 100 - (100 / (1 + RS))
+
+    Parameters
+        prices (pd.Series[float]): Series of closing prices.
+        window (int, optional): Number of periods to use for calculating the RSI, by default 14.
 
     Returns:
-        pd.Series: RSI values (NaN during warm-up or where Prices contains NaN).
+        rsi (pd.Series[float]): Series containing the RSI values.
+
+    Sources
+        Wilder, J. W. (1978). *New Concepts in Technical Trading Systems*
+        Murphy, J. J. (1999). *Technical Analysis of the Financial Markets*
+        TradingView, “Relative Strength Index (RSI)”.
+            https://www.tradingview.com/support/solutions/43000502338-relative-strength-index-rsi/
     """
-    # Empty series → return empty series (clean)
-    if Prices.empty:
-        return pd.Series(index=Prices.index, dtype=float)
+    # error handling
+    prices = val.validate_prices(prices)
 
-    # Diff preserves NaNs naturally
-    delta = Prices.diff()
+    if not isinstance(window, int):
+        raise TypeError("window must be an integer.")
+    if window <= 0:
+        raise ValueError("window must be a positive integer.")
 
-    # Gains and losses preserve NaN alignment
-    gain = delta.where(delta > 0, 0)
-    loss = -delta.where(delta < 0, 0)
+    # prefill output with NaNs
+    out = pd.Series(
+        np.nan,
+        index=prices.index,
+        dtype=float,
+        name=f"RSI_{window}",
+    )
 
-    # Prepare outputs
-    avg_gain = pd.Series(index=Prices.index, dtype=float)
-    avg_loss = pd.Series(index=Prices.index, dtype=float)
+    # convert to numpy array for speed and split data into valid blocks (without NaNs).
+    # RSI stays NaN over NaN regions
+    x = prices.to_numpy(dtype=float, na_value=np.nan)
+    n = x.size
+    if n == 0:
+        return out
 
-    # If not enough data for warm-up → return all NaN
-    if len(Prices) <= window:
-        return pd.Series(index=Prices.index, dtype=float)
+    isnan = np.isnan(x)
 
-    # Initial average gain/loss (includes NaNs if present)
-    initial_slice = gain.iloc[1 : window + 1]
-    avg_gain.iloc[window] = initial_slice.mean()
-    avg_loss.iloc[window] = loss.iloc[1 : window + 1].mean()
+    # Process each contiguous block of non-NaN prices independently
+    start = None
+    for i in range(n + 1):
+        if i < n and not isnan[i]:
+            if start is None:
+                start = i
+        else:
+            if start is None:
+                continue
+            end = i  # exclusive
+            block_len = end - start
+            if block_len > window:
+                block = x[start:end]
+                delta = np.diff(block)
 
-    # Wilder smoothing
-    for i in range(window + 1, len(Prices)):
-        # If the current price or delta is NaN → keep previous averages
-        if pd.isna(gain.iloc[i]) or pd.isna(loss.iloc[i]):
-            avg_gain.iloc[i] = avg_gain.iloc[i - 1]
-            avg_loss.iloc[i] = avg_loss.iloc[i - 1]
-            continue
+                # split gains and losses periods [+2, -1, +3] -> gain=[2,0,3], loss=[0,1,0]
+                gain = np.where(delta > 0.0, delta, 0.0)
+                loss = np.where(delta < 0.0, -delta, 0.0)
 
-        avg_gain.iloc[i] = ((avg_gain.iloc[i - 1] * (window - 1)) + gain.iloc[i]) / window
-        avg_loss.iloc[i] = ((avg_loss.iloc[i - 1] * (window - 1)) + loss.iloc[i]) / window
+                # Seed with simple mean over first `window` changes
+                avg_gain = gain[:window].mean()
+                avg_loss = loss[:window].mean()
 
-    # Compute RSI
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
+                # First RSI value lands at index (start + window)
+                out.iloc[start + window] = mu.rsi_from_avgs(avg_gain, avg_loss)
 
-    # Constant-series case: avg_gain = avg_loss = 0 → RSI = 50
-    mask_constant = (avg_gain == 0) & (avg_loss == 0)
-    rsi[mask_constant] = 50
+                # Wilder smoothing, delta[j] ends at price index (start+j+1)
+                for j in range(window, delta.size):
+                    avg_gain = (avg_gain * (window - 1) + gain[j]) / window
+                    avg_loss = (avg_loss * (window - 1) + loss[j]) / window
+                    out.iloc[start + j + 1] = mu.rsi_from_avgs(avg_gain, avg_loss)
 
-    # FINAL STEP: preserve NaNs from the original input
-    rsi[Prices.isna()] = float("nan")
+            start = None
 
-    return rsi
+    return out

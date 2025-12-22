@@ -27,6 +27,9 @@ dev = [
     "hypothesis>=6.0",
     "pandas-stubs>=2.1.4.240218",
     "types-setuptools>=69.0",
+    "TA-Lib",
+    "ta",
+
 ]
 
 [project.scripts]
@@ -127,3 +130,8 @@ exclude_lines = [
 ]
 precision = 2
 show_missing = true
+
+[dependency-groups]
+dev = [
+    "ta-lib>=0.6.8",
+]
