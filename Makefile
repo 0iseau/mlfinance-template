@@ -8,7 +8,7 @@ PYTHON := python3
 UV := uv
 SRC_DIR := src
 TEST_DIR := tests
-PKG_NAME := simclt
+PKG_NAME := mlfinance
 
 # Colors for output
 RED := \033[0;31m
