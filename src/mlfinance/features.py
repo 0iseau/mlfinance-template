@@ -10,7 +10,7 @@ Functions:
         bollinger: Bollinger bands.
     Price-based features:
         returns: Simple and log rate of returns.
-        volatility:
+        volatility, rolling_volatility: Volatility and rolling volatility of returns.
         momentum:
         trend:
     Volume-based features:
