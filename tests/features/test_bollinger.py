@@ -23,7 +23,7 @@ def test_bollinger_matches_definition():
     out = mf.bollinger_bands(x, window=window, n_std=n_std)
 
     mid = mu.sma(x, window=window)
-    sd = mu.rolling_std(x, window=window, ddof=0)
+    sd = mu.rolling_std(x, window=window, df=0)
 
     expected_upper = mid + n_std * sd
     expected_lower = mid - n_std * sd
