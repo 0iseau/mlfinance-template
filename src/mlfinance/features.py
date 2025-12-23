@@ -277,14 +277,110 @@ def returns(
         shifted = x.shift(h)
 
         if kind in {"simple", "both"}:
-            # simple return: P_t / P_{t-h} - 1
+            # simple return: Pt / P{t-h} - 1
             r = x / shifted - 1.0
             out[f"ret_{h}"] = r
 
         if kind in {"log", "both"}:
-            # log return: log(P_t / P_{t-h})
-            # Using log(x) - log(shifted) is numerically stable.
+            # log return: log(Pt/P{t-h}) = log(Pt) - log(P{t-h})
             lr = np.log(x) - np.log(shifted)
             out[f"logret_{h}"] = lr
 
     return pd.DataFrame(out, index=prices.index)
+
+
+def volatility(
+    prices: pd.Series,
+    *,
+    window: int | None = None,
+    kind: str = "log",
+    df: int = 0,
+) -> float:
+    """Volatility of price returns.
+
+    The Volatility measures the dispersion of returns by computing the standard deviation
+    of price over a period. Can be computed using log returns or simple returns.
+
+    Parameters:
+        prices (pd.Series): Series of prices.
+        window (int, optional): Number of periods to use for calculating the volatility,
+            by default 21.
+        kind (str, optional): Calculation method for returns: "log" or "simple", by default "log".
+        df (int, optional): Delta degrees of freedom to compute standard deviation, by default 0.
+    """
+    # Parameter validation
+    prices = validate_prices(prices)
+
+    if prices.empty:
+        return float("nan")
+
+    if kind not in {"log", "simple"}:
+        raise ValueError("kind must be one of {'log', 'simple'}.")
+    if window is not None and (not isinstance(window, int) or window <= 0):
+        raise ValueError("window must be a positive integer or None.")
+    if df not in (0, 1):
+        raise ValueError("df must be 0 or 1.")
+
+    x = pd.to_numeric(prices, errors="coerce").astype(float)
+
+    if kind == "log":
+        x = x.where(x > 0)
+        rets = (np.log(x) - np.log(x.shift(1))).dropna()
+    else:
+        rets = x.pct_change().dropna()
+
+    if window is not None:
+        rets = rets.tail(window)
+
+    if rets.size == 0:
+        return float("nan")
+
+    return float(np.std(rets, ddof=df))
+
+
+def rolling_volatility(
+    prices: pd.Series,
+    *,
+    window: int,
+    kind: str = "log",  # "log" or "simple"
+    df: int = 0,
+) -> pd.Series:
+    """Rolling Volatility of price returns over specified windows.
+
+    The Rolling Volatility computes the volatility price movements over specified windows, giving
+    insights into market volatility trends and risks. It can be computed using log returns or
+    simple returns.
+
+    Parameters:
+        prices (pd.Series): Series of prices.
+        window (int): Window size (in periods) for calculating the rolling volatility.
+        kind (str, optional): Calculation method for returns: "log" or "simple", by default "log".
+        df (int, optional): Delta degrees of freedom to compute standard deviation, by default 0.
+
+    """
+    # Parameter validation
+    prices = validate_prices(prices)
+
+    if prices.empty:
+        return pd.Series(index=prices.index)
+
+    if not isinstance(window, int) or window <= 0:
+        raise ValueError("window must be a positive integer.")
+    if kind not in {"log", "simple"}:
+        raise ValueError("kind must be one of {'log', 'simple'}.")
+    if df not in (0, 1):
+        raise ValueError("df must be 0 or 1.")
+
+    x = pd.to_numeric(prices, errors="coerce").astype(float)
+    if kind == "log":
+        x = x.where(x > 0)
+        returns = np.log(x) - np.log(x.shift(1))
+    else:
+        returns = x.pct_change()
+
+    return mu.rolling_std(
+        returns,
+        window=window,
+        df=df,
+        min_periods=window,
+    )
