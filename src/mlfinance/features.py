@@ -5,18 +5,23 @@ used as inputs to machine-learning models.
 
 Functions:
     Technical indicators:
+
         rsi: Relative Strength Index using Wilder smoothing.
         macd: MACD line, signal line, and histogram.
         bollinger: Bollinger bands.
     Price-based features:
+
         returns: Simple and log rate of returns.
-        volatility, rolling_volatility: Volatility and rolling volatility of returns.
+        volatility, rolling_volatility, atr: Volatility, rolling volatility, and
+            Average True Range of returns.
         momentum_ts, macd_v: Time series momentum, MACD-V
         trend:
+
     Volume-based features:
         obv: On-Balance Volume.
         vma: Volume Moving Average.
         volume volatility:
+
     Lag and rolling statistics:
         lagged values of prices and volume.
         rolling mean, std, min, max of prices and volume.
@@ -399,3 +404,193 @@ def rolling_volatility(
         df=df,
         min_periods=window,
     )
+
+
+def momentum_ts(prices: pd.Series, window: int = 250) -> pd.DataFrame:
+    """Time series momentum of price returns.
+
+    Time series momentum, or absolute momentum, predicts an asset's future performance based
+    on its passed trends over a given time frame. Can be plotted againts a 0% horizontal line
+    to identify positive or negative momentum.
+
+    parameters:
+        prices (pd.Series): Series of prices.
+        window (int, optional): Number of periods to use for calculating the momentum,
+            by default 250.
+
+    Returns:
+        (pd.Series): Series containing the time series momentum values.
+
+    Sources:
+        Moskowitz, Tobias J., Yao Hua Ooi, and Lasse Heje Pedersen (2012). *Time Series Momentum.*
+            Journal of Financial Economics 104 (2): 228-250.
+        TradingView - Time Series Momentum (Absolute Momentum)
+            https://de.tradingview.com/script/1qEJO8Wo/
+    """
+    prices = validate_prices(prices)
+
+    if prices.empty:
+        return pd.DataFrame(index=prices.index)
+
+    if window <= 0:
+        raise ValueError("window must be a positive integer.")
+
+    x = pd.to_numeric(prices, errors="coerce").astype(float)
+
+    shifted = x.shift(window)
+    mom = x / shifted - 1.0
+
+    return pd.DataFrame({f"mom_{window}": mom}, index=prices.index)
+
+
+def atr(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    *,
+    window: int = 14,
+) -> pd.Series:
+    """Average True Range (ATR) Volatility.
+
+    The Average True Range (ATR) measures market volatility decomposing daily price ranges,
+    including overnight gaps, permitting true movement assessment and not only intraday changes.
+
+    Parameters:
+        high (pd.Series): Series of high prices.
+        low (pd.Series): Series of low prices.
+        close (pd.Series): Series of closing prices.
+        window (int, optional): Number of periods to use for calculating the ATR, by default 14.
+
+    Returns:
+        (pd.Series): Series containing the ATR values.
+
+    Source:
+        Wilder, J. W. (1978). *New Concepts in Technical Trading Systems*
+        Investopedia - Average True Range (ATR)
+            https://www.investopedia.com/terms/a/atr.asp
+    """
+    # Parameter validation
+    high = validate_prices(high)
+    low = validate_prices(low)
+    close = validate_prices(close)
+
+    if high.empty or low.empty or close.empty:
+        return pd.Series(np.nan, index=close.index, dtype=float, name=f"ATR_{window}")
+
+    if not isinstance(window, int):
+        raise TypeError("window must be an integer.")
+    if window <= 0:
+        raise ValueError("window must be a positive integer.")
+
+    if not (high.index.equals(low.index) and high.index.equals(close.index)):
+        raise ValueError("high, low, close must have the same index.")
+
+    # Conversion to numeric
+    high = pd.to_numeric(high, errors="coerce").astype(float)
+    low = pd.to_numeric(low, errors="coerce").astype(float)
+    close = pd.to_numeric(close, errors="coerce").astype(float)
+
+    # Prepare True Range (TR)
+    prev_close = close.shift(1)
+
+    tr = pd.concat(
+        [
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+
+    # Wilder ATR
+    atr = pd.Series(np.nan, index=tr.index, dtype=float)
+
+    tr_valid = tr.dropna()
+    if tr_valid.size < window:
+        atr.name = f"ATR_{window}"
+        return atr
+
+        # Initial ATR (SMA of first window TR values)
+    seed_idx = tr_valid.index[window - 1]
+
+    # Force an integer positional location for mypy (get_loc can return int|slice|ndarray)
+    seed_loc_arr = tr.index.get_indexer([seed_idx])
+    seed_loc = int(seed_loc_arr[0])
+    if seed_loc < 0:
+        atr.name = f"ATR_{window}"
+        return atr
+
+    atr.iloc[seed_loc] = tr_valid.iloc[:window].mean()
+
+    # Wilder smoothing
+    for i in range(seed_loc + 1, len(tr)):
+        if np.isnan(tr.iloc[i]):
+            atr.iloc[i] = np.nan
+        else:
+            atr.iloc[i] = (atr.iloc[i - 1] * (window - 1) + tr.iloc[i]) / window
+
+    atr.name = f"ATR_{window}"
+
+    return atr
+
+
+def macd_v(
+    close: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    *,
+    fast: int = 12,
+    slow: int = 26,
+    atr_window: int = 26,
+) -> pd.Series:
+    """MACD-V Volatility Normalized Momentum.
+
+    MACD-V uses MACD normalizing by volatility itself. The tool of measurement of volatility
+    used by the author is the Average True Range (ATR), but the simple and rolling volatility
+    can be used as well.
+
+    Computation:
+    MACD-V = (EMA_fast(close) - EMA_slow(close)) / ATR(atr_length)
+
+    Parameters:
+        close (pd.Series): Series of closing prices.
+        high (pd.Series): Series of high prices.
+        low (pd.Series): Series of low prices.
+        fast (int, optional): Span for the fast EMA, by default 12.
+        slow (int, optional): Span for the slow EMA, by default 26.
+        atr_window (int, optional): Window for the ATR calculation, by default 26.
+
+    Returns:
+        (pd.Series): Series containing the MACD-V values.
+
+    Sources:
+        Alex Spiroglou (3 May 2022). - *MACD-V: Volatility Normalized Momentum.*
+        TradingView - MACD-V Volatility Normalized Momentum
+            https://www.tradingview.com/script/CE4EqZ1A-MACD-V-Volatility-Normalized-Momentum/
+    """
+    # Parameter validation
+    close = validate_prices(close)
+    high = validate_prices(high)
+    low = validate_prices(low)
+
+    if close.empty or high.empty or low.empty:
+        return pd.Series(np.nan, index=close.index, name="macd_v")
+
+    if not all(isinstance(x, int) and x > 0 for x in (fast, slow, atr_window)):
+        raise ValueError("fast, slow, and atr_window must be positive integers.")
+
+    if not (close.index.equals(high.index) and close.index.equals(low.index)):
+        raise ValueError("high, low, close must have the same index.")
+
+    # MACD (EMA difference)
+    ema_fast = close.ewm(span=fast, adjust=False).mean()
+    ema_slow = close.ewm(span=slow, adjust=False).mean()
+    macd = ema_fast - ema_slow
+
+    # ATR normalization (Wilder)
+    atr_val = atr(high, low, close, window=atr_window)
+
+    macd_v = macd / atr_val
+    macd_v.name = "macd_v"
+
+    return macd_v
