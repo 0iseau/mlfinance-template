@@ -1,6 +1,6 @@
 """Feature engineering module.
 
-Provides functions that compute technical indicators and price-volume transformations
+Provides functions that compute past-only technical indicators and price-volume transformations
 used as inputs to machine-learning models.
 
 Functions:
