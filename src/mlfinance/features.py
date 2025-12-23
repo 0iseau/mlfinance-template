@@ -11,7 +11,7 @@ Functions:
     Price-based features:
         returns: Simple and log rate of returns.
         volatility, rolling_volatility: Volatility and rolling volatility of returns.
-        momentum:
+        momentum_ts, macd_v: Time series momentum, MACD-V
         trend:
     Volume-based features:
         obv: On-Balance Volume.
@@ -304,9 +304,16 @@ def volatility(
     Parameters:
         prices (pd.Series): Series of prices.
         window (int, optional): Number of periods to use for calculating the volatility,
-            by default 21.
+            by default None (uses all available data).
         kind (str, optional): Calculation method for returns: "log" or "simple", by default "log".
         df (int, optional): Delta degrees of freedom to compute standard deviation, by default 0.
+
+    Returns:
+        (float): Volatility of the price returns.
+
+    Sources:
+        Investopedia - Volatility
+            https://www.investopedia.com/terms/v/volatility.asp
     """
     # Parameter validation
     prices = validate_prices(prices)
@@ -356,6 +363,14 @@ def rolling_volatility(
         window (int): Window size (in periods) for calculating the rolling volatility.
         kind (str, optional): Calculation method for returns: "log" or "simple", by default "log".
         df (int, optional): Delta degrees of freedom to compute standard deviation, by default 0.
+
+    Returns:
+        (pd.Series): Series containing the rolling volatility values.
+
+    Sources:
+        TradingView - Rolling Volatility Indicator
+            https://www.tradingview.com/script/RCRc38L9-Rolling-Volatility-Indicator/
+
 
     """
     # Parameter validation
