@@ -15,12 +15,10 @@ Functions:
         volatility, rolling_volatility, atr: Volatility, rolling volatility, and
             Average True Range of returns.
         momentum_ts, macd_v: Time series momentum, MACD-V
-        trend:
 
     Volume-based features:
         obv: On-Balance Volume.
         vma: Volume Moving Average.
-        volume volatility:
 
     Lag and rolling statistics:
         lagged values of prices and volume.
@@ -33,7 +31,7 @@ import numpy as np
 import pandas as pd
 
 import mlfinance.math_utils as mu
-from mlfinance.validation import validate_prices
+from mlfinance.validation import validate_data
 
 
 def rsi(prices: pd.Series[float], window: int = 14) -> pd.Series[float]:
@@ -63,7 +61,7 @@ def rsi(prices: pd.Series[float], window: int = 14) -> pd.Series[float]:
             https://www.tradingview.com/support/solutions/43000502338-relative-strength-index-rsi/
     """
     # error handling
-    prices = validate_prices(prices)
+    prices = validate_data(prices)
 
     if not isinstance(window, int):
         raise TypeError("window must be an integer.")
@@ -162,7 +160,7 @@ def macd(
         Investopedia - Moving Average Convergence Divergence (MACD)
             https://www.investopedia.com/terms/m/macd.asp
     """
-    prices = validate_prices(prices)
+    prices = validate_data(prices)
 
     # parameter verifications
     for name, v in (("fast", fast), ("slow", slow), ("signal", signal)):
@@ -215,6 +213,8 @@ def bollinger_bands(
         Investopedia - Bollinger Bands
             https://www.investopedia.com/terms/b/bollingerbands.asp
     """
+    close = validate_data(close)
+
     mid = mu.sma(close, window)
     sd = mu.rolling_std(close, window)
 
@@ -255,7 +255,7 @@ def returns(
         Investopedia - Rate of Return (ROR)
             https://www.investopedia.com/terms/r/rateofreturn.asp
     """
-    prices = validate_prices(prices)
+    prices = validate_data(prices)
 
     if prices.empty:
         return pd.DataFrame(index=prices.index)
@@ -321,7 +321,7 @@ def volatility(
             https://www.investopedia.com/terms/v/volatility.asp
     """
     # Parameter validation
-    prices = validate_prices(prices)
+    prices = validate_data(prices)
 
     if prices.empty:
         return float("nan")
@@ -379,7 +379,7 @@ def rolling_volatility(
 
     """
     # Parameter validation
-    prices = validate_prices(prices)
+    prices = validate_data(prices)
 
     if prices.empty:
         return pd.Series(index=prices.index)
@@ -427,7 +427,7 @@ def momentum_ts(prices: pd.Series, window: int = 250) -> pd.DataFrame:
         TradingView - Time Series Momentum (Absolute Momentum)
             https://de.tradingview.com/script/1qEJO8Wo/
     """
-    prices = validate_prices(prices)
+    prices = validate_data(prices)
 
     if prices.empty:
         return pd.DataFrame(index=prices.index)
@@ -470,9 +470,9 @@ def atr(
             https://www.investopedia.com/terms/a/atr.asp
     """
     # Parameter validation
-    high = validate_prices(high)
-    low = validate_prices(low)
-    close = validate_prices(close)
+    high = validate_data(high)
+    low = validate_data(low)
+    close = validate_data(close)
 
     if high.empty or low.empty or close.empty:
         return pd.Series(np.nan, index=close.index, dtype=float, name=f"ATR_{window}")
@@ -569,9 +569,9 @@ def macd_v(
             https://www.tradingview.com/script/CE4EqZ1A-MACD-V-Volatility-Normalized-Momentum/
     """
     # Parameter validation
-    close = validate_prices(close)
-    high = validate_prices(high)
-    low = validate_prices(low)
+    close = validate_data(close)
+    high = validate_data(high)
+    low = validate_data(low)
 
     if close.empty or high.empty or low.empty:
         return pd.Series(np.nan, index=close.index, name="macd_v")
@@ -594,3 +594,70 @@ def macd_v(
     macd_v.name = "macd_v"
 
     return macd_v
+
+
+def obv(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """On-Balance Volume (OBV).
+
+    The OBV measures the relative buying/selling pressures on an asset using the flows
+    of traded volume to predict the future short-term price changes.
+
+    Parameters:
+        close (pd.Series): Series of closing prices.
+        volume (pd.Series): Series of traded volumes.
+
+    Returns:
+        pd.Series: Series containing the OBV values.
+
+    Source:
+        Joseph E. Granville (1976). - *New Strategy of Daily Stock Market Timing for Maximum
+            Profit*
+        Corporate Finance Institute - On-Balance Volume indicator (OBV).
+    """
+    # parameter validation
+    close = validate_data(close)
+    volume = validate_data(volume)
+
+    if close.empty or volume.empty:
+        return pd.Series(np.nan, index=close.index, dtype=float, name="obv")
+
+    if not close.index.equals(volume.index):
+        raise ValueError("close and volume must have the same index.")
+
+    c = pd.to_numeric(close, errors="coerce").astype(float)
+    v = pd.to_numeric(volume, errors="coerce").astype(float)
+
+    d = c.diff()
+
+    direction = pd.Series(
+        np.sign(d.to_numpy(dtype=float, na_value=np.nan)),
+        index=d.index,
+        dtype=float,
+    ).fillna(0.0)
+
+    signed_vol = (v * direction).astype(float)
+    signed_vol[(c.isna()) | (v.isna())] = np.nan
+
+    out = signed_vol.fillna(0.0).cumsum()
+    out[signed_vol.isna()] = np.nan
+
+    out.name = "obv"
+    return out
+
+
+def volume_ma(volume: pd.Series, window: int) -> pd.Series:
+    """Volume Moving Average (VMA).
+
+    The VMA is the average of the volume of an asset over a specified window.
+    It helps explain volume trends by smoothing out short-term fluctuations.
+    """
+    volume = validate_data(volume)
+
+    if not isinstance(window, int) or window <= 0:
+        raise ValueError("window must be a positive integer.")
+
+    vma = mu.sma(volume, window)
+
+    vma.name = f"VMA_{window}"
+
+    return vma

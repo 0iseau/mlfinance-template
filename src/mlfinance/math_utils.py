@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from mlfinance.validation import validate_prices
+from mlfinance.validation import validate_data
 
 
 def rsi_from_avgs(ag: float, al: float) -> float:
@@ -117,7 +117,7 @@ def ema(
         Pandas documentation - Exponentially weighted window
             https://pandas.pydata.org/docs/reference/api/pandas.Series.ewm.html
     """
-    prices = validate_prices(prices)
+    prices = validate_data(prices)
 
     if min_periods is None:
         mp = 0
