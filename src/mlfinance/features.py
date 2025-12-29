@@ -21,8 +21,8 @@ Functions:
         vma: Volume Moving Average.
 
     Lag and rolling statistics:
-        lagged values of prices and volume.
-        rolling mean, std, min, max of prices and volume.
+        lags: Lagged values of a time series.
+        rolling_indicators: Rolling mean, std, min, max of a time series.
 """
 
 from collections.abc import Sequence
@@ -607,7 +607,7 @@ def obv(close: pd.Series, volume: pd.Series) -> pd.Series:
         volume (pd.Series): Series of traded volumes.
 
     Returns:
-        pd.Series: Series containing the OBV values.
+        (pd.Series): Series containing the OBV values.
 
     Source:
         Joseph E. Granville (1976). - *New Strategy of Daily Stock Market Timing for Maximum
@@ -650,6 +650,17 @@ def volume_ma(volume: pd.Series, window: int) -> pd.Series:
 
     The VMA is the average of the volume of an asset over a specified window.
     It helps explain volume trends by smoothing out short-term fluctuations.
+
+    Parameters:
+        volume (pd.Series): Series of traded volumes.
+        window (int): Number of periods to use for calculating the VMA.
+
+    Returns:
+        (pd.Series): Series containing the VMA values.
+
+    Source:
+        Wikipedia - Moving average
+            https://en.wikipedia.org/wiki/Moving_average
     """
     volume = validate_data(volume)
 
@@ -661,3 +672,68 @@ def volume_ma(volume: pd.Series, window: int) -> pd.Series:
     vma.name = f"VMA_{window}"
 
     return vma
+
+
+def lags(data: pd.Series, shift: int = 0) -> pd.DataFrame:
+    """Lagged values.
+
+    Shift in time series values, used to analyze past dependencies.
+    Permits the program to compute indicators from the past without
+    using forward data.
+
+    Parameters:
+        data (pd.Series): Time series data.
+        shift (int): Steps before current observation. By default, 0, takes
+            full data series.
+
+    Return:
+        (pd.DataFrame): Data frame containing lagged values.
+
+    Source:
+        WikiPedia - Lag operator
+            https://en.wikipedia.org/wiki/Lag_operator
+    """
+    data = validate_data(data)
+
+    if data.empty:
+        return pd.DataFrame(index=data.index)
+
+    if not isinstance(shift, int) or shift < 0:
+        raise ValueError("shift must be a non-negative integer.")
+
+    if shift == 0:
+        shift = data.size
+
+    return pd.DataFrame({f"lag_{shift}": data.shift(shift)}, index=data.index)
+
+
+def rolling_indicators(data: pd.Series, window: int) -> pd.DataFrame:
+    """Rolling mean, standard deviation, minimum, maximum.
+
+    Computes rolling indicators of a series over a specified window.
+
+    Parameters:
+        data (pd.Series): Data series
+        window (int): Time period to use for calculation.
+
+    Returns:
+        (pd.DataFrame): Data frame with rolling indicators.
+    """
+    data = validate_data(data)
+
+    if not isinstance(window, int) or window <= 0:
+        raise ValueError("window must be a positive integer.")
+
+    if data.empty:
+        return pd.DataFrame(index=data.index)
+
+    r = data.rolling(window=window, min_periods=window)
+    return pd.DataFrame(
+        {
+            f"roll_mean_{window}": r.mean().astype(float),
+            f"roll_std_{window}": r.std(ddof=0).astype(float),
+            f"roll_min_{window}": r.min().astype(float),
+            f"roll_max_{window}": r.max().astype(float),
+        },
+        index=data.index,
+    )
