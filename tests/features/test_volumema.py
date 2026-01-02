@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from mlfinance.features import volume_ma
 from mlfinance.math_utils import sma
@@ -48,3 +49,9 @@ def test_volume_ma_vs_pandas_sma_function():
         atol=1e-12,
         equal_nan=True,
     )
+
+
+def test_volume_ma_raises_on_negative_volume():
+    volume = pd.Series([100.0, -1.0, 120.0], dtype=float)
+    with pytest.raises(ValueError):
+        volume_ma(volume, 2)

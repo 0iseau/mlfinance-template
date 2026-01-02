@@ -52,6 +52,12 @@ def test_returns_invalid_horizon_raises():
         mf.returns(x, horizons=(0,), kind="both")
 
 
+def test_returns_raises_on_non_positive_prices():
+    prices = pd.Series([100.0, -1.0, 101.0], dtype=float)
+    with pytest.raises(ValueError):
+        mf.returns(prices, horizons=(1,), kind="both")
+
+
 def test_returns_matches_pandas_pct_change_simple():
     prices = pd.Series([100.0, 110.0, 121.0, 132.0])
     out = mf.returns(prices, horizons=(1,), kind="simple")

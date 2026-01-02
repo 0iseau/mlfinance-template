@@ -75,6 +75,15 @@ def test_atr_raises_on_index_mismatch():
         ft.atr(high, low, close, window=2)
 
 
+def test_atr_raises_on_non_positive_prices():
+    high = pd.Series([10.0, 11.0, 12.0], dtype=float)
+    low = pd.Series([9.0, 10.0, 11.0], dtype=float)
+    close = pd.Series([9.5, 0.0, 11.5], dtype=float)
+
+    with pytest.raises(ValueError):
+        ft.atr(high, low, close, window=2)
+
+
 def test_true_range_matches_talib_if_available():
     talib = pytest.importorskip("talib")
 

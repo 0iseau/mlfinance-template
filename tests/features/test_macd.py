@@ -20,6 +20,12 @@ def test_macd_raises_on_invalid_params():
         macd(prices, fast=26, slow=26)
 
 
+def test_macd_raises_on_non_positive_prices():
+    prices = pd.Series([100.0, 101.0, 0.0, 102.0], dtype=float)
+    with pytest.raises(ValueError):
+        macd(prices)
+
+
 def test_macd_preserves_index_length_and_dtype():
     idx = pd.date_range("2020-01-01", periods=120, freq="D")
     prices = pd.Series(np.linspace(100, 130, len(idx)), index=idx, dtype=float)
@@ -52,7 +58,7 @@ def test_macd_matches_reference_built_from_ema():
     ema_slow = ema(prices, span=slow, min_periods=slow)
     macd_ref = ema_fast - ema_slow
 
-    signal_ref = ema(macd_ref, span=signal, min_periods=fast + signal)
+    signal_ref = ema(macd_ref, span=signal, min_periods=signal)
     hist_ref = macd_ref - signal_ref
 
     assert_allclose(macd_line.to_numpy(), macd_ref.to_numpy(), equal_nan=True)
@@ -91,7 +97,7 @@ def test_macd_matches_pandas_reference():
     macd_ref = (ema_fast - ema_slow).mask(prices.isna())
 
     signal_ref = (
-        macd_ref.ewm(span=signal, adjust=False, ignore_na=True, min_periods=fast + signal)
+        macd_ref.ewm(span=signal, adjust=False, ignore_na=True, min_periods=signal)
         .mean()
         .mask(macd_ref.isna())
     )

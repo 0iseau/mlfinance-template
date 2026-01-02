@@ -46,6 +46,22 @@ def test_obv_raises_on_index_mismatch():
         ft.obv(close, volume)
 
 
+def test_obv_raises_on_non_positive_close():
+    close = pd.Series([10.0, 0.0, 12.0], dtype=float)
+    volume = pd.Series([100.0, 200.0, 300.0], dtype=float)
+
+    with pytest.raises(ValueError):
+        ft.obv(close, volume)
+
+
+def test_obv_raises_on_negative_volume():
+    close = pd.Series([10.0, 11.0, 12.0], dtype=float)
+    volume = pd.Series([100.0, -200.0, 300.0], dtype=float)
+
+    with pytest.raises(ValueError):
+        ft.obv(close, volume)
+
+
 def test_obv_nan_propagation_at_nan_timestamps():
     close = pd.Series([10.0, np.nan, 12.0, 11.0])
     volume = pd.Series([100.0, 200.0, np.nan, 400.0])

@@ -8,7 +8,7 @@ Functions:
 
         rsi: Relative Strength Index using Wilder smoothing.
         macd: MACD line, signal line, and histogram.
-        bollinger: Bollinger bands.
+        bollinger_bands: Bollinger bands.
     Price-based features:
 
         returns: Simple and log rate of returns.
@@ -18,7 +18,8 @@ Functions:
 
     Volume-based features:
         obv: On-Balance Volume.
-        vma: Volume Moving Average.
+        volume_ma: Volume Moving Average.
+        rvol : Relative Volume.
 
     Lag and rolling statistics:
         lags: Lagged values of a time series.
@@ -67,6 +68,11 @@ def rsi(prices: pd.Series[float], window: int = 14) -> pd.Series[float]:
         raise TypeError("window must be an integer.")
     if window <= 0:
         raise ValueError("window must be a positive integer.")
+    if prices.empty:
+        return pd.Series(index=prices.index, dtype=float, name=f"RSI_{window}")
+
+    if (prices.notna() & prices.le(0.0)).any():
+        raise ValueError("prices must be strictly positive.")
 
     # prefill output with NaNs
     out = pd.Series(
@@ -124,7 +130,6 @@ def rsi(prices: pd.Series[float], window: int = 14) -> pd.Series[float]:
 
 def macd(
     prices: pd.Series,
-    *,
     fast: int = 12,
     slow: int = 26,
     signal: int = 9,
@@ -160,9 +165,9 @@ def macd(
         Investopedia - Moving Average Convergence Divergence (MACD)
             https://www.investopedia.com/terms/m/macd.asp
     """
+    # parameter validation
     prices = validate_data(prices)
 
-    # parameter verifications
     for name, v in (("fast", fast), ("slow", slow), ("signal", signal)):
         if not isinstance(v, int) or v <= 0:
             raise ValueError(f"{name} must be a positive integer.")
@@ -170,13 +175,27 @@ def macd(
     if fast >= slow:
         raise ValueError("fast must be < slow.")
 
+    if prices.empty:
+        macd_line = pd.Series(index=prices.index, dtype=float, name=f"MACD_{fast}_{slow}")
+
+        signal_line = pd.Series(
+            index=prices.index, dtype=float, name=f"MACDsig_{fast}_{slow}_{signal}"
+        )
+
+        hist = pd.Series(index=prices.index, dtype=float, name=f"MACDhist_{fast}_{slow}_{signal}")
+
+        return macd_line, signal_line, hist
+
+    if (prices.notna() & prices.le(0.0)).any():
+        raise ValueError("prices must be strictly positive.")
+
     ema_fast = mu.ema(prices, span=fast, min_periods=fast)
     ema_slow = mu.ema(prices, span=slow, min_periods=slow)
 
     macd_line = (ema_fast - ema_slow).astype(float)
     macd_line.name = f"MACD_{fast}_{slow}"
 
-    signal_line = mu.ema(macd_line, span=signal, min_periods=fast + signal)
+    signal_line = mu.ema(macd_line, span=signal, min_periods=signal)
     signal_line.name = f"MACDsig_{fast}_{slow}_{signal}"
 
     hist = (macd_line - signal_line).astype(float)
@@ -201,9 +220,6 @@ def bollinger_bands(
         window (int, optional): Number of periods to use for calculating the bands, by default 20.
         n_std (float, optional): Number of standard deviations for the upper and lower bands,
             by default 2.0.
-        ddof (int, optional): Delta degrees of freedom to compute standard deviation, by default 0.
-        min_periods (int | None, optional): Minimum number of observations required to have a value,
-            by default None.
 
     Returns:
         pd.DataFrame: DataFrame containing the Bollinger Bands features
@@ -213,7 +229,22 @@ def bollinger_bands(
         Investopedia - Bollinger Bands
             https://www.investopedia.com/terms/b/bollingerbands.asp
     """
+    # Parameter validation
     close = validate_data(close)
+
+    if not isinstance(window, int):
+        raise TypeError("window must be an integer.")
+    if window <= 0:
+        raise ValueError("window must be a positive integer.")
+    if not isinstance(n_std, (int | float)):
+        raise TypeError("n_std must be a number.")
+    if n_std < 0.0:
+        raise ValueError("n_std must be positive.")
+    if close.empty:
+        return pd.DataFrame(index=close.index, columns=["bb_mid", "bb_upper", "bb_lower"])
+
+    if (close.notna() & close.le(0.0)).any():
+        raise ValueError("close prices must be strictly positive.")
 
     mid = mu.sma(close, window)
     sd = mu.rolling_std(close, window)
@@ -231,9 +262,13 @@ def bollinger_bands(
     )
 
 
+def _validate_kind(kind: str) -> None:
+    if kind not in {"simple", "log", "both"}:
+        raise ValueError("kind must be one of {'simple', 'log', 'both'}.")
+
+
 def returns(
     prices: pd.Series,
-    *,
     horizons: Sequence[int] = (1, 5, 10, 21),
     kind: str = "both",
 ) -> pd.DataFrame:
@@ -257,14 +292,13 @@ def returns(
     """
     prices = validate_data(prices)
 
-    if prices.empty:
-        return pd.DataFrame(index=prices.index)
-
-    if kind not in {"simple", "log", "both"}:
-        raise ValueError("kind must be one of {'simple', 'log', 'both'}.")
+    _validate_kind(kind)
 
     if not isinstance(horizons, list | tuple) or len(horizons) == 0:
         raise ValueError("horizons must be a non-empty sequence of positive integers.")
+
+    if (prices.notna() & prices.le(0.0)).any():
+        raise ValueError("prices must be strictly positive.")
 
     # horizons validation
     hs: list[int] = []
@@ -275,20 +309,32 @@ def returns(
             raise ValueError("Each horizon must be a positive integer.")
         hs.append(h)
 
-    x = pd.to_numeric(prices, errors="coerce").astype(float)
+    if prices.empty:
+        if kind == "both":
+            cols = [f"ret_{h}" for h in hs] + [f"logret_{h}" for h in hs]
+        elif kind == "simple":
+            cols = [f"ret_{h}" for h in hs]
+        else:
+            cols = [f"logret_{h}" for h in hs]
+        return pd.DataFrame(index=prices.index, columns=cols, dtype=float)
+
+    x = prices
 
     out: dict[str, pd.Series] = {}
+
     for h in hs:
         shifted = x.shift(h)
 
         if kind in {"simple", "both"}:
             # simple return: Pt / P{t-h} - 1
-            r = x / shifted - 1.0
+            denom = shifted.where((shifted != 0.0) & shifted.notna())
+            r = (x / denom - 1.0).astype(float)
             out[f"ret_{h}"] = r
 
         if kind in {"log", "both"}:
             # log return: log(Pt/P{t-h}) = log(Pt) - log(P{t-h})
-            lr = np.log(x) - np.log(shifted)
+            valid = x.gt(0.0) & shifted.gt(0.0)
+            lr = (np.log(x) - np.log(shifted)).where(valid).astype(float)
             out[f"logret_{h}"] = lr
 
     return pd.DataFrame(out, index=prices.index)
@@ -296,7 +342,6 @@ def returns(
 
 def volatility(
     prices: pd.Series,
-    *,
     window: int | None = None,
     kind: str = "log",
     df: int = 0,
@@ -333,26 +378,38 @@ def volatility(
     if df not in (0, 1):
         raise ValueError("df must be 0 or 1.")
 
-    x = pd.to_numeric(prices, errors="coerce").astype(float)
+    if (prices.notna() & prices.le(0.0)).any():
+        raise ValueError("prices must be strictly positive.")
+
+    x = prices.astype(float)
 
     if kind == "log":
-        x = x.where(x > 0)
-        rets = (np.log(x) - np.log(x.shift(1))).dropna()
+        # Guard against non-positive values (will become NaN instead of -inf / warnings)
+        x_pos = x.where(x > 0.0)
+        log_x_pos = pd.Series(
+            np.log(x_pos.to_numpy(dtype=float, na_value=np.nan)),
+            index=x_pos.index,
+            dtype=float,
+        )
+        rets = log_x_pos.diff()
     else:
-        rets = x.pct_change().dropna()
+        # We tell mypy to ignore, pct_change() returns a float Series, but type checkers
+        # may not infer that here.
+        rets = x.pct_change()  # type: ignore[assignment]
+
+    rets = rets.replace([np.inf, -np.inf], np.nan).dropna()
 
     if window is not None:
         rets = rets.tail(window)
 
     if rets.size == 0:
-        return float("nan")
+        return 0.0
 
-    return float(np.std(rets, ddof=df))
+    return float(np.std(rets.to_numpy(dtype=float), ddof=df))
 
 
 def rolling_volatility(
     prices: pd.Series,
-    *,
     window: int,
     kind: str = "log",  # "log" or "simple"
     df: int = 0,
@@ -382,7 +439,7 @@ def rolling_volatility(
     prices = validate_data(prices)
 
     if prices.empty:
-        return pd.Series(index=prices.index)
+        return pd.Series(index=prices.index, dtype=float)
 
     if not isinstance(window, int) or window <= 0:
         raise ValueError("window must be a positive integer.")
@@ -391,7 +448,11 @@ def rolling_volatility(
     if df not in (0, 1):
         raise ValueError("df must be 0 or 1.")
 
-    x = pd.to_numeric(prices, errors="coerce").astype(float)
+    if (prices.notna() & prices.le(0.0)).any():
+        raise ValueError("prices must be strictly positive.")
+
+    x = prices
+
     if kind == "log":
         x = x.where(x > 0)
         returns = np.log(x) - np.log(x.shift(1))
@@ -429,13 +490,18 @@ def momentum_ts(prices: pd.Series, window: int = 250) -> pd.DataFrame:
     """
     prices = validate_data(prices)
 
-    if prices.empty:
-        return pd.DataFrame(index=prices.index)
-
+    if not isinstance(window, int):
+        raise TypeError("window must be an integer.")
     if window <= 0:
         raise ValueError("window must be a positive integer.")
 
-    x = pd.to_numeric(prices, errors="coerce").astype(float)
+    if (prices.notna() & prices.le(0.0)).any():
+        raise ValueError("prices must be strictly positive.")
+
+    if prices.empty:
+        return pd.DataFrame(index=prices.index, columns=[f"mom_{window}"])
+
+    x = prices
 
     shifted = x.shift(window)
     mom = x / shifted - 1.0
@@ -447,7 +513,6 @@ def atr(
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
-    *,
     window: int = 14,
 ) -> pd.Series:
     """Average True Range (ATR) Volatility.
@@ -475,7 +540,7 @@ def atr(
     close = validate_data(close)
 
     if high.empty or low.empty or close.empty:
-        return pd.Series(np.nan, index=close.index, dtype=float, name=f"ATR_{window}")
+        return pd.Series(index=close.index, dtype=float, name=f"ATR_{window}")
 
     if not isinstance(window, int):
         raise TypeError("window must be an integer.")
@@ -485,10 +550,10 @@ def atr(
     if not (high.index.equals(low.index) and high.index.equals(close.index)):
         raise ValueError("high, low, close must have the same index.")
 
-    # Conversion to numeric
-    high = pd.to_numeric(high, errors="coerce").astype(float)
-    low = pd.to_numeric(low, errors="coerce").astype(float)
-    close = pd.to_numeric(close, errors="coerce").astype(float)
+    # Validate strictly positive prices
+    for series, name in ((high, "high"), (low, "low"), (close, "close")):
+        if (series.notna() & series.le(0.0)).any():
+            raise ValueError(f"{name} prices must be strictly positive.")
 
     # Prepare True Range (TR)
     prev_close = close.shift(1)
@@ -510,7 +575,7 @@ def atr(
         atr.name = f"ATR_{window}"
         return atr
 
-        # Initial ATR (SMA of first window TR values)
+    # Initial ATR (SMA of first window TR values)
     seed_idx = tr_valid.index[window - 1]
 
     # Force an integer positional location for mypy (get_loc can return int|slice|ndarray)
@@ -538,7 +603,6 @@ def macd_v(
     close: pd.Series,
     high: pd.Series,
     low: pd.Series,
-    *,
     fast: int = 12,
     slow: int = 26,
     atr_window: int = 26,
@@ -574,7 +638,7 @@ def macd_v(
     low = validate_data(low)
 
     if close.empty or high.empty or low.empty:
-        return pd.Series(np.nan, index=close.index, name="macd_v")
+        return pd.Series(index=close.index, dtype=float, name="macd_v")
 
     if not all(isinstance(x, int) and x > 0 for x in (fast, slow, atr_window)):
         raise ValueError("fast, slow, and atr_window must be positive integers.")
@@ -582,15 +646,22 @@ def macd_v(
     if not (close.index.equals(high.index) and close.index.equals(low.index)):
         raise ValueError("high, low, close must have the same index.")
 
-    # MACD (EMA difference)
-    ema_fast = close.ewm(span=fast, adjust=False).mean()
-    ema_slow = close.ewm(span=slow, adjust=False).mean()
-    macd = ema_fast - ema_slow
+    # Validate strictly positive prices
+    for series, name in ((close, "close"), (high, "high"), (low, "low")):
+        if (series.notna() & series.le(0.0)).any():
+            raise ValueError(f"{name} prices must be strictly positive.")
+
+    # MACD
+    ema_fast = mu.ema(close, span=fast, min_periods=fast)
+    ema_slow = mu.ema(close, span=slow, min_periods=slow)
+    macd = (ema_fast - ema_slow).astype(float)
 
     # ATR normalization (Wilder)
-    atr_val = atr(high, low, close, window=atr_window)
+    atr_val = atr(high, low, close, window=atr_window).astype(float)
 
-    macd_v = macd / atr_val
+    # Avoid division by zero / missing ATR
+    denom = atr_val.where((atr_val != 0.0) & atr_val.notna())
+    macd_v = (macd / denom).astype(float)
     macd_v.name = "macd_v"
 
     return macd_v
@@ -619,13 +690,18 @@ def obv(close: pd.Series, volume: pd.Series) -> pd.Series:
     volume = validate_data(volume)
 
     if close.empty or volume.empty:
-        return pd.Series(np.nan, index=close.index, dtype=float, name="obv")
+        return pd.Series(index=close.index, dtype=float, name="obv")
 
     if not close.index.equals(volume.index):
         raise ValueError("close and volume must have the same index.")
 
-    c = pd.to_numeric(close, errors="coerce").astype(float)
-    v = pd.to_numeric(volume, errors="coerce").astype(float)
+    c = close
+    v = volume
+
+    if (c.notna() & c.le(0.0)).any():
+        raise ValueError("close prices must be strictly positive.")
+    if (v.notna() & v.lt(0.0)).any():
+        raise ValueError("volume must be non-negative.")
 
     d = c.diff()
 
@@ -666,6 +742,11 @@ def volume_ma(volume: pd.Series, window: int) -> pd.Series:
 
     if not isinstance(window, int) or window <= 0:
         raise ValueError("window must be a positive integer.")
+    if volume.empty:
+        return pd.Series(index=volume.index, dtype=float, name=f"VMA_{window}")
+
+    if (volume.notna() & volume.lt(0.0)).any():
+        raise ValueError("volume must be non-negative.")
 
     vma = mu.sma(volume, window)
 
@@ -674,7 +755,45 @@ def volume_ma(volume: pd.Series, window: int) -> pd.Series:
     return vma
 
 
-def lags(data: pd.Series, shift: int = 0) -> pd.DataFrame:
+def rvol(volume: pd.Series, window: int) -> pd.Series:
+    """Rolling Volume Volatility (RVOL).
+
+    The RVOL compares the current volume to its rolling volatility over a specified
+    window.
+
+    Parameters:
+        volume (pd.Series): Series of traded volumes.
+        window (int): Number of periods to use for calculating the RVOL.
+
+    Returns:
+        (pd.Series): Series containing the RVOL values.
+
+    Source:
+        dastrader - RVOL - Relative Volume
+            https://dastrader.com/docs/rvol-relative-volume/
+    """
+    volume = validate_data(volume)
+
+    if volume.empty:
+        return pd.Series(index=volume.index, dtype=float, name="rvol")
+
+    if not isinstance(window, int) or window <= 0:
+        raise ValueError("window must be a positive integer.")
+
+    v = volume
+    if (v.notna() & v.lt(0.0)).any():
+        raise ValueError("volume must be non-negative.")
+
+    sma_vol = mu.sma(v, window, min_periods=window).astype(float)
+    denom = sma_vol.where((sma_vol != 0.0) & sma_vol.notna())
+
+    rvol = (v / denom).astype(float)
+    rvol.name = "rvol"
+
+    return rvol
+
+
+def lags(data: pd.Series, shift: int = 1) -> pd.DataFrame:
     """Lagged values.
 
     Shift in time series values, used to analyze past dependencies.
@@ -683,8 +802,7 @@ def lags(data: pd.Series, shift: int = 0) -> pd.DataFrame:
 
     Parameters:
         data (pd.Series): Time series data.
-        shift (int): Steps before current observation. By default, 0, takes
-            full data series.
+        shift (int): Steps before current observation. By default, 1.
 
     Return:
         (pd.DataFrame): Data frame containing lagged values.
@@ -694,17 +812,17 @@ def lags(data: pd.Series, shift: int = 0) -> pd.DataFrame:
             https://en.wikipedia.org/wiki/Lag_operator
     """
     data = validate_data(data)
+    # No range validity as method is for general use.
+
+    if not isinstance(shift, int) or shift <= 0:
+        raise ValueError("shift must be a positive integer.")
 
     if data.empty:
-        return pd.DataFrame(index=data.index)
+        return pd.DataFrame(
+            index=data.index, dtype=float, columns=[f"lag_{k}" for k in range(1, shift + 1)]
+        )
 
-    if not isinstance(shift, int) or shift < 0:
-        raise ValueError("shift must be a non-negative integer.")
-
-    if shift == 0:
-        shift = data.size
-
-    return pd.DataFrame({f"lag_{shift}": data.shift(shift)}, index=data.index)
+    return pd.DataFrame({f"lag_{k}": data.shift(k) for k in range(1, shift + 1)}, index=data.index)
 
 
 def rolling_indicators(data: pd.Series, window: int) -> pd.DataFrame:
@@ -720,18 +838,28 @@ def rolling_indicators(data: pd.Series, window: int) -> pd.DataFrame:
         (pd.DataFrame): Data frame with rolling indicators.
     """
     data = validate_data(data)
+    # No range validity as method is for general use.
 
     if not isinstance(window, int) or window <= 0:
         raise ValueError("window must be a positive integer.")
 
     if data.empty:
-        return pd.DataFrame(index=data.index)
+        return pd.DataFrame(
+            index=data.index,
+            dtype=float,
+            columns=[
+                f"roll_mean_{window}",
+                f"roll_std_{window}",
+                f"roll_min_{window}",
+                f"roll_max_{window}",
+            ],
+        )
 
     r = data.rolling(window=window, min_periods=window)
     return pd.DataFrame(
         {
             f"roll_mean_{window}": r.mean().astype(float),
-            f"roll_std_{window}": r.std(ddof=0).astype(float),
+            f"roll_std_{window}": mu.rolling_std(x=data, window=window).astype(float),
             f"roll_min_{window}": r.min().astype(float),
             f"roll_max_{window}": r.max().astype(float),
         },

@@ -72,3 +72,12 @@ def test_macd_v_raises_on_index_mismatch():
 
     with pytest.raises(ValueError):
         ft.macd_v(close, high, low, fast=2, slow=3, atr_window=2)
+
+
+def test_macd_v_raises_on_non_positive_prices():
+    close = pd.Series([100.0, 101.0, -1.0, 102.0], dtype=float)
+    high = close + 1.0
+    low = close - 1.0
+
+    with pytest.raises(ValueError):
+        ft.macd_v(close, high, low, fast=2, slow=3, atr_window=3)

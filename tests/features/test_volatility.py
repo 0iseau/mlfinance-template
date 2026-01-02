@@ -29,6 +29,12 @@ def test_volatility_invalid_kind_raises():
         ft.volatility(prices, kind="bad")
 
 
+def test_volatility_raises_on_non_positive_prices():
+    prices = pd.Series([100.0, 101.0, -1.0, 102.0], dtype=float)
+    with pytest.raises(ValueError):
+        ft.volatility(prices, kind="log")
+
+
 def test_rolling_volatility_preserves_index_and_length():
     prices = pd.Series(
         [100.0, 101.0, 102.0, 103.0, 104.0],
@@ -64,7 +70,6 @@ def test_rolling_volatility_matches_pandas_reference():
 
     out = ft.rolling_volatility(prices, window=window, kind="log")
 
-    # PUBLIC reference: pandas rolling std on log returns
     logret = np.log(prices) - np.log(prices.shift(1))
     expected = logret.rolling(window=window, min_periods=window).std(ddof=0)
 
@@ -75,3 +80,9 @@ def test_rolling_volatility_invalid_window_raises():
     prices = pd.Series([100.0, 101.0, 102.0])
     with pytest.raises(ValueError):
         ft.rolling_volatility(prices, window=0, kind="log")
+
+
+def test_rolling_volatility_raises_on_non_positive_prices():
+    prices = pd.Series([100.0, 101.0, 0.0, 102.0], dtype=float)
+    with pytest.raises(ValueError):
+        ft.rolling_volatility(prices, window=2, kind="log")
