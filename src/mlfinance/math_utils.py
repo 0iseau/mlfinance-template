@@ -145,7 +145,7 @@ def ema(
             continue
 
         n_valid += 1
-        prev = xi if np.isnan(prev) else (1.0 - a) * prev + a * xi
+        prev = float(xi) if np.isnan(prev) else float((1.0 - a) * prev + a * xi)
 
         if n_valid >= mp:
             out.iat[i] = prev
