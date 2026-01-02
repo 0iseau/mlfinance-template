@@ -48,7 +48,7 @@ def test_rolling_indicators_empty_input_returns_empty_df():
 
     assert isinstance(out, pd.DataFrame)
     assert out.index.equals(x.index)
-    assert out.shape == (0, 0)
+    assert out.shape == (0, 4)
 
 
 def test_rolling_indicators_matches_public_reference():

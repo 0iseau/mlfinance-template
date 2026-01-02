@@ -34,6 +34,12 @@ def test_rsi_window_value_error(window):
         rsi(s, window=window)
 
 
+def test_rsi_raises_on_non_positive_prices():
+    s = pd.Series([100.0, 101.0, -1.0, 102.0], dtype=float)
+    with pytest.raises(ValueError):
+        rsi(s, window=3)
+
+
 def test_rsi_empty_series_returns_empty():
     s = pd.Series([], dtype=float)
     out = rsi(s, window=14)

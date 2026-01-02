@@ -49,3 +49,9 @@ def test_momentum_invalid_window_raises():
 
     with pytest.raises(TypeError):
         mf.momentum_ts(prices, window=1.5)
+
+
+def test_momentum_raises_on_non_positive_prices():
+    prices = pd.Series([100.0, -1.0, 101.0], dtype=float)
+    with pytest.raises(ValueError):
+        mf.momentum_ts(prices, window=1)

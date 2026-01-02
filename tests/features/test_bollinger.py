@@ -23,7 +23,7 @@ def test_bollinger_matches_definition():
     out = mf.bollinger_bands(x, window=window, n_std=n_std)
 
     mid = mu.sma(x, window=window)
-    sd = mu.rolling_std(x, window=window, df=0)
+    sd = mu.rolling_std(x, window=window)
 
     expected_upper = mid + n_std * sd
     expected_lower = mid - n_std * sd
@@ -47,6 +47,12 @@ def test_bollinger_invalid_window_raises():
     x = pd.Series([1.0, 2.0, 3.0])
     with pytest.raises(ValueError):
         mf.bollinger_bands(x, window=0, n_std=2.0)
+
+
+def test_bollinger_raises_on_non_positive_close():
+    close = pd.Series([1.0, 2.0, -3.0, 4.0])
+    with pytest.raises(ValueError):
+        mf.bollinger_bands(close, window=2, n_std=2.0)
 
 
 def test_bollinger_matches_ta_package():
