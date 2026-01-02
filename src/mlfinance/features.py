@@ -393,9 +393,7 @@ def volatility(
         )
         rets = log_x_pos.diff()
     else:
-        # We tell mypy to ignore, pct_change() returns a float Series, but type checkers
-        # may not infer that here.
-        rets = x.pct_change()  # type: ignore[assignment]
+        rets: pd.Series[float] = x.pct_change()  # type: ignore
 
     rets = rets.replace([np.inf, -np.inf], np.nan).dropna()
 
@@ -578,8 +576,8 @@ def atr(
     # Initial ATR (SMA of first window TR values)
     seed_idx = tr_valid.index[window - 1]
 
-    # Force an integer positional location for mypy (get_loc can return int|slice|ndarray)
-    seed_loc_arr = tr.index.get_indexer([seed_idx])
+    # Force an integer positional location for mypy
+    seed_loc_arr = tr.index.get_indexer(pd.Index([seed_idx]))
     seed_loc = int(seed_loc_arr[0])
     if seed_loc < 0:
         atr.name = f"ATR_{window}"
