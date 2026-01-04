@@ -863,3 +863,115 @@ def rolling_indicators(data: pd.Series, window: int) -> pd.DataFrame:
         },
         index=data.index,
     )
+
+
+def _build_analyze(x: pd.DataFrame) -> pd.DataFrame:
+    out = pd.DataFrame(index=x.index, dtype=float)
+
+    out["Price"] = x["Price"]
+    out["Volume"] = x["Volume"]
+    out["rsi"] = rsi(x["Price"])
+    out["macd_line"], out["signal_line"], out["macd_hist"] = macd(x["Price"])
+    out["bb_mid"], out["bb_upper"], out["bb_lower"] = bollinger_bands(x["Price"]).T.values
+    out["returns"] = returns(x["Price"])["ret_1"]
+    out["volatility"] = volatility(x["Price"])
+    out["rolling_volatility"] = rolling_volatility(x["Price"], window=21)
+    out["atr"] = atr(x["High"], x["Low"], x["Price"])
+    out["momentum_ts"] = momentum_ts(x["Price"])["mom_250"]
+    out["macd_v"] = macd_v(x["Price"], x["High"], x["Low"])
+    out["obv"] = obv(x["Price"], x["Volume"])
+    out["volume_ma"] = volume_ma(x["Volume"], window=20)
+    out["rvol"] = rvol(x["Volume"], window=20)
+    out["roll_mean_10"] = rolling_indicators(x["Price"], window=10)["roll_mean_10"]
+    out["roll_std_10"] = rolling_indicators(x["Price"], window=10)["roll_std_10"]
+    out["roll_min_10"] = rolling_indicators(x["Price"], window=10)["roll_min_10"]
+    out["roll_max_10"] = rolling_indicators(x["Price"], window=10)["roll_max_10"]
+
+    return out
+
+
+def _build_summary(x: pd.DataFrame) -> pd.DataFrame:
+    out = pd.DataFrame(dtype=float)
+
+    out["number of observations"] = [len(x)]
+    out["number of missing prices"] = [x["Price"].isna().sum()]
+    out["price_mean"] = [x["Price"].mean()]
+    out["price_std"] = [x["Price"].std()]
+    out["price_var"] = [x["Price"].var()]
+    out["min_price"] = [x["Price"].min()]
+    out["max_price"] = [x["Price"].max()]
+    out["median_price"] = [x["Price"].median()]
+    # Rolling indicators
+    for w in (10, 21):
+        ri = rolling_indicators(x["Price"], window=w)
+        out[f"roll_mean_{w}"] = [ri[f"roll_mean_{w}"].iloc[-1]]
+        out[f"roll_std_{w}"] = [ri[f"roll_std_{w}"].iloc[-1]]
+        out[f"roll_min_{w}"] = [ri[f"roll_min_{w}"].iloc[-1]]
+        out[f"roll_max_{w}"] = [ri[f"roll_max_{w}"].iloc[-1]]
+
+    if "Volume" in x.columns:
+        out["number of missing volumes"] = [x["Volume"].isna().sum()]
+        out["volume_mean"] = [x["Volume"].mean()]
+        out["volume_std"] = [x["Volume"].std()]
+        out["volume_var"] = [x["Volume"].var()]
+        out["min_volume"] = [x["Volume"].min()]
+        out["max_volume"] = [x["Volume"].max()]
+        # Rolling indicators
+        for w in (10, 21):
+            vi = rolling_indicators(x["Volume"], window=w)
+            out[f"vol_roll_mean_{w}"] = [vi[f"roll_mean_{w}"].iloc[-1]]
+            out[f"vol_roll_std_{w}"] = [vi[f"roll_std_{w}"].iloc[-1]]
+            out[f"vol_roll_min_{w}"] = [vi[f"roll_min_{w}"].iloc[-1]]
+            out[f"vol_roll_max_{w}"] = [vi[f"roll_max_{w}"].iloc[-1]]
+    return out
+
+
+def build_feature(data: pd.DataFrame, option: str = "analyze") -> pd.DataFrame:
+    """Build and store all indicators values in a DataFrame.
+
+    Parameters:
+        data (pd.DataFrame): DataFrame containing financial time series data.
+            Expected columns: 'close' (or 'price' or 'open'), 'high', 'low', 'volume'.
+        option (str): option of features building : analyze, summary or lags.
+
+    Returns:
+        pd.DataFrame: DataFrame containing computed features.
+    """
+    # Parameter validation
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError("data must be a pandas DataFrame.")
+    if not isinstance(option, str) or option not in ("analyze", "summary", "lags"):
+        raise TypeError("option must be 'analyze', 'summary' or 'lags'")
+
+    if data.empty:
+        return pd.DataFrame(index=data.index, dtype=float)
+
+    # BY PRIORITY ORDER
+    usable_prices = ("Price", "price", "PRICE", "Close", "close", "CLOSE", "Open", "Open", "OPEN")
+    usable_highs = ("High", "high", "HIGH")
+    usable_lows = ("Low", "low", "LOW")
+    usable_volumes = ("Vol", "vol", "VOL", "Volume", "volume", "VOLUME")
+
+    x = pd.DataFrame(index=data.index, dtype=float)
+
+    x["Price"] = data[next(i for i in data.columns if i in usable_prices)]
+    if "Price" not in x.columns:
+        raise ValueError("Cannot find usable price column in DataFrame.")
+
+    x["High"] = data[next(i for i in data.columns if i in usable_highs)]
+    x["Low"] = data[next(i for i in data.columns if i in usable_lows)]
+    x["Volume"] = data[next(i for i in data.columns if i in usable_volumes)]
+
+    x = x.sort_index()
+
+    if option == "analyze":
+        return _build_analyze(x)
+
+    if option == "summary":
+        return _build_summary(x)
+
+    if option == "lags":
+        prices = x["Price"]
+        return lags(prices, shift=50)
+
+    return pd.DataFrame(index=data.index, dtype=float)
