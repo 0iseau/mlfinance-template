@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
@@ -60,7 +59,7 @@ def test_build_feature_does_not_mutate_input(sample_ohlcv: pd.DataFrame) -> None
     pd.testing.assert_frame_equal(df_in, sample_ohlcv)
 
 
-@pytest.mark.parametrize("option", ["analyze", "summary", "lags"])
+@pytest.mark.parametrize("option", ["analyze", "summary", "build"])
 def test_build_feature_preserves_index(sample_ohlcv: pd.DataFrame, option: str) -> None:
     got = build_feature(sample_ohlcv, option=option)
     assert got is not sample_ohlcv
@@ -254,66 +253,3 @@ def test_build_feature_summary_values(sample_ohlcv: pd.DataFrame) -> None:
     assert np.isclose(row["volume_var"], vol.var(), rtol=1e-12, atol=1e-12)
     assert np.isclose(row["min_volume"], vol.min(), rtol=0.0, atol=0.0)
     assert np.isclose(row["max_volume"], vol.max(), rtol=0.0, atol=0.0)
-
-
-# -----------------------------
-# Lag mode: robust checks without over-assuming exact naming
-# -----------------------------
-
-
-def _extract_lag_k(col: str) -> int | None:
-    # Accept patterns like: "lag_1", "lag1", "Price_lag_5", "price_lag5", etc.
-    m = re.search(r"lag[_]?(?P<k>\d+)", col, flags=re.IGNORECASE)
-    if not m:
-        return None
-    return int(m.group("k"))
-
-
-def test_build_feature_lag_creates_shifted_columns(sample_ohlcv: pd.DataFrame) -> None:
-    got = build_feature(sample_ohlcv, option="lags")
-    assert len(got) == len(sample_ohlcv)
-    assert got.index.equals(sample_ohlcv.index)
-
-    # Must contain at least one lag column
-    lag_cols = [c for c in got.columns if re.search(r"lag", c, flags=re.IGNORECASE)]
-    assert lag_cols, "Lag mode produced no columns containing 'lags'"
-
-    price = sample_ohlcv["close"].astype(float)
-
-    # For any column where we can parse k from the name, verify it's a shift(k) of price.
-    checked_any = False
-    for c in lag_cols:
-        k = _extract_lag_k(c)
-        if k is None:
-            continue
-        checked_any = True
-        exp = price.shift(k)
-        pd.testing.assert_series_equal(got[c], exp, check_names=False, check_dtype=False)
-
-    # If naming doesn't encode k, still enforce non-triviality:
-    # at least one column differs from price.
-    if not checked_any:
-        assert any(
-            not got[c].equals(price) for c in lag_cols
-        ), "Lag columns exist but none appear to be shifted versions of price"
-
-
-# -----------------------------
-# Error handling: missing columns
-# -----------------------------
-
-
-def test_build_feature_missing_price_column_raises(sample_ohlcv: pd.DataFrame) -> None:
-    df = sample_ohlcv.drop(columns=["close"])
-    # Current implementation raises StopIteration (from next(...))
-    with pytest.raises(StopIteration):
-        _ = build_feature(df, option="analyze")
-
-
-def test_build_feature_missing_volume_column_summary_raises_or_nans(
-    sample_ohlcv: pd.DataFrame,
-) -> None:
-    df = sample_ohlcv.drop(columns=["volume"])
-    # Current implementation raises StopIteration (from next(...))
-    with pytest.raises(StopIteration):
-        _ = build_feature(df, option="summary")

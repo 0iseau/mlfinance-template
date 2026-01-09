@@ -50,9 +50,9 @@ def test_features_missing_csv_file_errors(tmp_path: Path) -> None:
     "flags",
     [
         ["--analyze", "--summary"],
-        ["--analyze", "--lags"],
-        ["--summary", "--lags"],
-        ["--analyze", "--summary", "--lags"],
+        ["--analyze", "--build"],
+        ["--summary", "--build"],
+        ["--analyze", "--summary", "--build"],
     ],
 )
 def test_features_flags_are_mutually_exclusive(tmp_path: Path, flags: list[str]) -> None:
@@ -60,7 +60,7 @@ def test_features_flags_are_mutually_exclusive(tmp_path: Path, flags: list[str])
     result = runner.invoke(app, ["features", str(csv_path), *flags])
 
     assert result.exit_code != 0
-    assert "Use only one of --analyze / --summary / --lags" in _combined_output(result)
+    assert "Use only one of --analyze / --summary / --build" in _combined_output(result)
 
 
 def test_features_invalid_csv_missing_required_columns_errors(tmp_path: Path) -> None:

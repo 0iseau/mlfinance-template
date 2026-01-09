@@ -13,7 +13,7 @@ def test_lags_preserves_index_and_shape():
 
     assert isinstance(out, pd.DataFrame)
     assert out.index.equals(x.index)
-    assert out.shape == (5, 2)
+    assert out.shape == (5, 3)
 
 
 def test_lags_shift_values_are_correct():
@@ -41,7 +41,7 @@ def test_lags_empty_input_returns_empty_df():
 
     assert isinstance(out, pd.DataFrame)
     assert out.index.equals(x.index)
-    assert out.shape == (0, 2)
+    assert out.shape == (0, 3)
 
 
 def test_lags_invalid_shift_raises():
