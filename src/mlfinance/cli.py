@@ -64,7 +64,7 @@ def features_cmd(
     data = pd.read_csv(data_csv)
     out = mf.build_feature(data, option)
 
-    path = Path("output/out_features.csv")
+    path = Path("out_features.csv")
 
     out.to_csv(path, index=False)
     print(f"CSV file created at: {path.resolve()}\n")
