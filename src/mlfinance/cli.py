@@ -23,7 +23,7 @@ rolling
 """
 
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 import pandas as pd
 import typer
@@ -84,27 +84,25 @@ def train(
 
     # Validate options
     if target not in ("returns", "direction", "rvol"):
-        raise typer.BadParameter("target must be 'returns', 'direction' or 'rvol'.")
+        raise ValueError("target must be 'returns', 'direction' or 'rvol'.")
     if model not in ("ridge", "rf", "gb"):
-        raise typer.BadParameter("model must be 'ridge', 'rf' or 'gb'.")
+        raise ValueError("model must be 'ridge', 'rf' or 'gb'.")
     if features not in ("technical", "stat", "all"):
-        raise typer.BadParameter("features must be 'technical', 'stat' or 'all'.")
-
+        raise ValueError("features must be 'technical', 'stat' or 'all'.")
     data = pd.read_csv(data_csv)
 
     df = mf.build_feature(data, features=features, option="analyze")
-    print(f"Successfully built features : {df.columns.tolist()}")
+    print(f"Successfully built features for: {df.columns.tolist()}")
 
     if model == "ridge":
-        out = mm.Ridge_model(df, alpha=1.0, target=target)
+        r = mm.Ridge_model(df, alpha=1.0, target=target)
 
-    info: Any
+    result, summary = r
 
-    model, y_pred, info = out  # out = (model, prediction, summary)
+    # Print summary
+    print("Model training summary:")
+    print(summary)
 
-    print("Model trained successfully.")
-    print(f"nSamples={info['n_samples']} | n_features={info['n_features']} | alpha={info['alpha']}")
-    print(f"intercept={info['intercept']:.6g} | RMSE={info['rmse']:.6g} | R²={info['r2']:.6g}")
-    print("Top coefficients:")
-    for t in info["top_features"]:
-        print(f"  {t['feature']:<20} {t['coef']:.6g}")
+    # File outputs
+    path = Path("out_model.csv")
+    result.to_csv(path, index=False)

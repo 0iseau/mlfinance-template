@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 from typer.testing import CliRunner
@@ -12,22 +13,32 @@ runner = CliRunner()
 
 
 def _write_sample_ohlcv_csv(path: Path, n: int = 80) -> Path:
-    # Keep prices strictly positive to satisfy feature validation.
+    # Create a proper Date column to serve as line/index identifier
+    dates = pd.date_range(start="2025-01-01", periods=n, freq="D")
+
     close = pd.Series(range(100, 100 + n), dtype=float)
+
+    # Build a minimal OHLCV dataset
     df = pd.DataFrame(
         {
+            "Date": dates,
             "close": close,
             "high": close + 1.0,
             "low": close - 1.0,
             "volume": pd.Series(range(1_000, 1_000 + n), dtype=float),
         }
     )
+
+    # Create a valid target column for Ridge testing
+    # (simple returns, will not be all NaN, horizon=1 works with 80 rows)
+    df["Returns_t+1"] = np.log(df["close"]).diff().shift(-1)
+
+    # Write CSV without dropping the index
     df.to_csv(path, index=False)
     return path
 
 
 def _first_stdout_line(result) -> str:
-    # Typer's CliRunner returns captured output in result.stdout.
     return (result.stdout or "").splitlines()[0] if (result.stdout or "").splitlines() else ""
 
 
@@ -70,4 +81,61 @@ def test_features_invalid_csv_missing_required_columns_errors(tmp_path: Path) ->
     df.to_csv(csv_path, index=False)
 
     result = runner.invoke(app, ["features", str(csv_path), "--analyze"])
+    assert result.exit_code != 0
+
+
+def test_train_ridge_defaults_and_bad_inputs(tmp_path: Path) -> None:
+    csv_path = _write_sample_ohlcv_csv(tmp_path / "data.csv", n=300)
+
+    # Defaults: target=returns, model=ridge, features=all
+    result = runner.invoke(app, ["train", str(csv_path)])
+    assert result.exit_code == 0
+    assert "Model training summary:" in result.stdout
+    assert "'model': 'Ridge'" in result.stdout
+    assert "'target': 'returns'" in result.stdout
+
+    # Bad inputs -> ValueError (surfaced via CLI non-zero exit + message)
+    result = runner.invoke(
+        app,
+        [
+            "train",
+            str(csv_path),
+            "--target",
+            "returns",
+            "--model",
+            "ridge",
+            "--features",
+            "invalid_feature",
+        ],
+    )
+    assert result.exit_code != 0
+
+    result = runner.invoke(
+        app,
+        [
+            "train",
+            str(csv_path),
+            "--target",
+            "invalid_target",
+            "--model",
+            "ridge",
+            "--features",
+            "all",
+        ],
+    )
+    assert result.exit_code != 0
+
+    result = runner.invoke(
+        app,
+        [
+            "train",
+            str(csv_path),
+            "--target",
+            "returns",
+            "--model",
+            "invalid_model",
+            "--features",
+            "all",
+        ],
+    )
     assert result.exit_code != 0

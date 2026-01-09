@@ -1002,15 +1002,18 @@ def _build_clean(x: pd.DataFrame) -> pd.DataFrame:
     df["Price"] = x[next(i for i in x.columns if i in usable_prices)]
     if "Price" not in df.columns:
         raise ValueError("Cannot find usable price column in DataFrame.")
+
     if temp_high is not None:
         df["High"] = x[temp_high]
     if temp_low is not None:
         df["Low"] = x[temp_low]
     if temp_volume is not None:
         df["Volume"] = x[temp_volume]
+
     df["Returns_t+1"] = df["Price"].pct_change().shift(-1)
-    print("Returns are calculated using Price column and shifted by -1 for prediction.")
+
     df["Direction"] = (df["Returns_t+1"] > 0).astype(int)
+
     if "Volume" in df.columns:
         df["RVOL_t+1"] = rvol(df["Volume"], window=20).shift(-1)
 
