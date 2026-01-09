@@ -754,7 +754,7 @@ def volume_ma(volume: pd.Series, window: int) -> pd.Series:
 
 
 def rvol(volume: pd.Series, window: int) -> pd.Series:
-    """Rolling Volume Volatility (RVOL).
+    """Relative Volume (RVOL).
 
     The RVOL compares the current volume to its rolling volatility over a specified
     window.
@@ -817,10 +817,10 @@ def lags(data: pd.Series, shift: int = 1) -> pd.DataFrame:
 
     if data.empty:
         return pd.DataFrame(
-            index=data.index, dtype=float, columns=[f"lag_{k}" for k in range(1, shift + 1)]
+            index=data.index, dtype=float, columns=[f"lag_{k}" for k in range(0, shift + 1)]
         )
 
-    return pd.DataFrame({f"lag_{k}": data.shift(k) for k in range(1, shift + 1)}, index=data.index)
+    return pd.DataFrame({f"lag_{k}": data.shift(k) for k in range(0, shift + 1)}, index=data.index)
 
 
 def rolling_indicators(data: pd.Series, window: int) -> pd.DataFrame:
@@ -865,27 +865,52 @@ def rolling_indicators(data: pd.Series, window: int) -> pd.DataFrame:
     )
 
 
-def _build_analyze(x: pd.DataFrame) -> pd.DataFrame:
+def _build_analyze(x: pd.DataFrame, features: str = "all") -> pd.DataFrame:
     out = pd.DataFrame(index=x.index, dtype=float)
 
+    if "Date" in x.columns:
+        out["Date"] = x["Date"]
     out["Price"] = x["Price"]
-    out["Volume"] = x["Volume"]
-    out["rsi"] = rsi(x["Price"])
-    out["macd_line"], out["signal_line"], out["macd_hist"] = macd(x["Price"])
-    out["bb_mid"], out["bb_upper"], out["bb_lower"] = bollinger_bands(x["Price"]).T.values
-    out["returns"] = returns(x["Price"])["ret_1"]
-    out["volatility"] = volatility(x["Price"])
-    out["rolling_volatility"] = rolling_volatility(x["Price"], window=21)
-    out["atr"] = atr(x["High"], x["Low"], x["Price"])
-    out["momentum_ts"] = momentum_ts(x["Price"])["mom_250"]
-    out["macd_v"] = macd_v(x["Price"], x["High"], x["Low"])
-    out["obv"] = obv(x["Price"], x["Volume"])
-    out["volume_ma"] = volume_ma(x["Volume"], window=20)
-    out["rvol"] = rvol(x["Volume"], window=20)
-    out["roll_mean_10"] = rolling_indicators(x["Price"], window=10)["roll_mean_10"]
-    out["roll_std_10"] = rolling_indicators(x["Price"], window=10)["roll_std_10"]
-    out["roll_min_10"] = rolling_indicators(x["Price"], window=10)["roll_min_10"]
-    out["roll_max_10"] = rolling_indicators(x["Price"], window=10)["roll_max_10"]
+
+    if features in {"all", "technical"}:
+        out["rsi"] = rsi(x["Price"])
+        out["macd_line"], out["signal_line"], out["macd_hist"] = macd(x["Price"])
+        out["bb_mid"], out["bb_upper"], out["bb_lower"] = bollinger_bands(x["Price"]).T.values
+        out["momentum_ts"] = momentum_ts(x["Price"])["mom_250"]
+
+    if features in {"all", "stat"}:
+        out["returns"] = returns(x["Price"])["ret_1"]
+        out["volatility"] = volatility(x["Price"])
+        out["rolling_volatility"] = rolling_volatility(x["Price"], window=21)
+        out["roll_mean_10"] = rolling_indicators(x["Price"], window=10)["roll_mean_10"]
+        out["roll_std_10"] = rolling_indicators(x["Price"], window=10)["roll_std_10"]
+        out["roll_min_10"] = rolling_indicators(x["Price"], window=10)["roll_min_10"]
+        out["roll_max_10"] = rolling_indicators(x["Price"], window=10)["roll_max_10"]
+
+    if "Volume" in x.columns:
+        out["Volume"] = x["Volume"]
+        if features in {"all", "technical"}:
+            out["volume_ma"] = volume_ma(x["Volume"], window=20)
+            out["rvol"] = rvol(x["Volume"], window=20)
+            out["obv"] = obv(x["Price"], x["Volume"])
+        if features in ("all", "stat"):
+            out["vol_roll_mean_10"] = rolling_indicators(x["Volume"], window=10)["roll_mean_10"]
+            out["vol_roll_std_10"] = rolling_indicators(x["Volume"], window=10)["roll_std_10"]
+            out["vol_roll_min_10"] = rolling_indicators(x["Volume"], window=10)["roll_min_10"]
+            out["vol_roll_max_10"] = rolling_indicators(x["Volume"], window=10)["roll_max_10"]
+
+    required_cols = {"High", "Low", "Price"}
+    has_required_cols = required_cols.issubset(x.columns)
+    is_technical = features in {"all", "technical"}
+
+    if has_required_cols and is_technical:
+        out["atr"] = atr(x["High"], x["Low"], x["Price"])
+        out["macd_v"] = macd_v(x["Price"], x["High"], x["Low"])
+
+    out["Returns_t+1"] = x["Returns_t+1"]
+    out["Direction"] = x["Direction"]
+    if "RVOL_t+1" in x.columns:
+        out["RVOL_t+1"] = x["RVOL_t+1"]
 
     return out
 
@@ -894,6 +919,8 @@ def _build_summary(x: pd.DataFrame) -> pd.DataFrame:
     out = pd.DataFrame(dtype=float)
 
     out["number of observations"] = [len(x)]
+    if "Date" in x.columns:
+        out["date range"] = [f"{x['Date'].min()} to {x['Date'].max()}"]
     out["number of missing prices"] = [x["Price"].isna().sum()]
     out["price_mean"] = [x["Price"].mean()]
     out["price_std"] = [x["Price"].std()]
@@ -901,13 +928,21 @@ def _build_summary(x: pd.DataFrame) -> pd.DataFrame:
     out["min_price"] = [x["Price"].min()]
     out["max_price"] = [x["Price"].max()]
     out["median_price"] = [x["Price"].median()]
+    if "Returns_t+1" in x.columns:
+        out["number of missing returns"] = [x["Returns_t+1"].isna().sum()]
+        out["returns_mean"] = [x["Returns_t+1"].mean()]
+        out["returns_std"] = [x["Returns_t+1"].std()]
+        out["returns_var"] = [x["Returns_t+1"].var()]
+        out["min_returns"] = [x["Returns_t+1"].min()]
+        out["max_returns"] = [x["Returns_t+1"].max()]
+        out["median_returns"] = [x["Returns_t+1"].median()]
     # Rolling indicators
     for w in (10, 21):
         ri = rolling_indicators(x["Price"], window=w)
-        out[f"roll_mean_{w}"] = [ri[f"roll_mean_{w}"].iloc[-1]]
-        out[f"roll_std_{w}"] = [ri[f"roll_std_{w}"].iloc[-1]]
-        out[f"roll_min_{w}"] = [ri[f"roll_min_{w}"].iloc[-1]]
-        out[f"roll_max_{w}"] = [ri[f"roll_max_{w}"].iloc[-1]]
+        out[f"roll_mean_{w}"] = [ri[f"roll_mean_{w}"].mean()]
+        out[f"roll_std_{w}"] = [ri[f"roll_std_{w}"].mean()]
+        out[f"roll_min_{w}"] = [ri[f"roll_min_{w}"].mean()]
+        out[f"roll_max_{w}"] = [ri[f"roll_max_{w}"].mean()]
 
     if "Volume" in x.columns:
         out["number of missing volumes"] = [x["Volume"].isna().sum()]
@@ -919,59 +954,101 @@ def _build_summary(x: pd.DataFrame) -> pd.DataFrame:
         # Rolling indicators
         for w in (10, 21):
             vi = rolling_indicators(x["Volume"], window=w)
-            out[f"vol_roll_mean_{w}"] = [vi[f"roll_mean_{w}"].iloc[-1]]
-            out[f"vol_roll_std_{w}"] = [vi[f"roll_std_{w}"].iloc[-1]]
-            out[f"vol_roll_min_{w}"] = [vi[f"roll_min_{w}"].iloc[-1]]
-            out[f"vol_roll_max_{w}"] = [vi[f"roll_max_{w}"].iloc[-1]]
+            out[f"vol_roll_mean_{w}"] = [vi[f"roll_mean_{w}"].mean()]
+            out[f"vol_roll_std_{w}"] = [vi[f"roll_std_{w}"].mean()]
+            out[f"vol_roll_min_{w}"] = [vi[f"roll_min_{w}"].mean()]
+            out[f"vol_roll_max_{w}"] = [vi[f"roll_max_{w}"].mean()]
     return out
 
 
-def build_feature(data: pd.DataFrame, option: str = "analyze") -> pd.DataFrame:
+def _build_clean(x: pd.DataFrame) -> pd.DataFrame:
+    if not isinstance(x, pd.DataFrame):
+        try:
+            x = pd.DataFrame(x)
+        except Exception as e:
+            raise TypeError("Could not convert x to a pandas DataFrame.") from e
+
+    if x.empty:
+        return pd.DataFrame(index=x.index, dtype=float)
+
+    # BY PRIORITY ORDER
+    usable_prices = ("Price", "price", "PRICE", "Close", "close", "CLOSE", "Open", "Open", "OPEN")
+    usable_highs = ("High", "high", "HIGH", "H", "h")
+    usable_lows = ("Low", "low", "LOW", "L", "l")
+    usable_volumes = ("Vol", "vol", "VOL", "Volume", "volume", "VOLUME")
+
+    df = pd.DataFrame(index=x.index, dtype=float)
+
+    usable_dates = (
+        "Date",
+        "date",
+        "DATE",
+        "Datetime",
+        "datetime",
+        "DATETIME",
+        "Time",
+        "time",
+        "TIME",
+    )
+
+    temp_date = next((i for i in x.columns if i in usable_dates), None)
+    temp_high = next((i for i in x.columns if i in usable_highs), None)
+    temp_low = next((i for i in x.columns if i in usable_lows), None)
+    temp_volume = next((i for i in x.columns if i in usable_volumes), None)
+
+    if temp_date is not None:
+        df["Date"] = x[temp_date]
+
+    df["Price"] = x[next(i for i in x.columns if i in usable_prices)]
+    if "Price" not in df.columns:
+        raise ValueError("Cannot find usable price column in DataFrame.")
+    if temp_high is not None:
+        df["High"] = x[temp_high]
+    if temp_low is not None:
+        df["Low"] = x[temp_low]
+    if temp_volume is not None:
+        df["Volume"] = x[temp_volume]
+    df["Returns_t+1"] = df["Price"].pct_change().shift(-1)
+    print("Returns are calculated using Price column and shifted by -1 for prediction.")
+    df["Direction"] = (df["Returns_t+1"] > 0).astype(int)
+    if "Volume" in df.columns:
+        df["RVOL_t+1"] = rvol(df["Volume"], window=20).shift(-1)
+
+    return df.sort_index()
+
+
+def build_feature(
+    data: pd.DataFrame,
+    option: str = "analyze",
+    features: str = "all",
+) -> pd.DataFrame:
     """Build and store all indicators values in a DataFrame.
 
     Parameters:
         data (pd.DataFrame): DataFrame containing financial time series data.
             Expected columns: 'close' (or 'price' or 'open'), 'high', 'low', 'volume'.
-        option (str): option of features building : analyze, summary or lags.
+        option (str): option of features building : analyze, summary or build.
 
     Returns:
         pd.DataFrame: DataFrame containing computed features.
     """
     # Parameter validation
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError("data must be a pandas DataFrame.")
-    if not isinstance(option, str) or option not in ("analyze", "summary", "lags"):
-        raise TypeError("option must be 'analyze', 'summary' or 'lags'")
 
-    if data.empty:
-        return pd.DataFrame(index=data.index, dtype=float)
+    if not isinstance(option, str) or option not in ("analyze", "summary", "build"):
+        raise TypeError("option must be 'analyze', 'summary' or 'build'")
 
-    # BY PRIORITY ORDER
-    usable_prices = ("Price", "price", "PRICE", "Close", "close", "CLOSE", "Open", "Open", "OPEN")
-    usable_highs = ("High", "high", "HIGH")
-    usable_lows = ("Low", "low", "LOW")
-    usable_volumes = ("Vol", "vol", "VOL", "Volume", "volume", "VOLUME")
+    x = _build_clean(data)
 
-    x = pd.DataFrame(index=data.index, dtype=float)
-
-    x["Price"] = data[next(i for i in data.columns if i in usable_prices)]
-    if "Price" not in x.columns:
-        raise ValueError("Cannot find usable price column in DataFrame.")
-
-    x["High"] = data[next(i for i in data.columns if i in usable_highs)]
-    x["Low"] = data[next(i for i in data.columns if i in usable_lows)]
-    x["Volume"] = data[next(i for i in data.columns if i in usable_volumes)]
-
-    x = x.sort_index()
+    if x.empty:
+        return pd.DataFrame(index=x.index, dtype=float)
 
     if option == "analyze":
-        return _build_analyze(x)
+        return _build_analyze(x, features=features)
 
     if option == "summary":
         return _build_summary(x)
 
-    if option == "lags":
-        prices = x["Price"]
-        return lags(prices, shift=50)
+    if option == "build":
+        return x
 
-    return pd.DataFrame(index=data.index, dtype=float)
+    return pd.DataFrame(index=x.index, dtype=float)

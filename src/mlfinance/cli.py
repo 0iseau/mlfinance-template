@@ -23,12 +23,13 @@ rolling
 """
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import pandas as pd
 import typer
 
 import mlfinance.features as mf
+import mlfinance.models as mm
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -44,24 +45,66 @@ def features_cmd(
     data_csv: Annotated[Path, typer.Argument()],
     analyze: Annotated[bool, typer.Option("--analyze")] = False,
     summary: Annotated[bool, typer.Option("--summary")] = False,
-    lags: Annotated[bool, typer.Option("--lags")] = False,
+    build: Annotated[bool, typer.Option("--build")] = False,
 ) -> None:
     """Build features from data."""
     if not data_csv.exists():
         raise typer.BadParameter("CSV file not found")
 
     # Exclusivity
-    selected = sum([analyze, summary, lags])
+    selected = sum([analyze, summary, build])
     if selected > 1:
-        raise typer.BadParameter("Use only one of --analyze / --summary / --lags")
+        raise typer.BadParameter("Use only one of --analyze / --summary / --build")
     option = "analyze"
     if summary:
         option = "summary"
-    elif lags:
-        option = "lags"
+    elif build:
+        option = "build"
 
     data = pd.read_csv(data_csv)
     out = mf.build_feature(data, option)
 
     path = Path("out_features.csv")
+
     out.to_csv(path, index=False)
+    print(f"CSV file created at: {path.resolve()}\n")
+    print(f"Columns generated : {out.columns.tolist()}")
+
+
+@app.command("train")  # type: ignore[misc]
+def train(
+    data_csv: Annotated[Path, typer.Argument()],
+    target: Annotated[str, typer.Option("--target")] = "returns",
+    model: Annotated[str, typer.Option("--model")] = "ridge",
+    features: Annotated[str, typer.Option("--features")] = "all",
+) -> None:
+    """Train regression models."""
+    if not data_csv.exists():
+        raise typer.BadParameter("CSV file not found")
+
+    # Validate options
+    if target not in ("returns", "direction", "rvol"):
+        raise typer.BadParameter("target must be 'returns', 'direction' or 'rvol'.")
+    if model not in ("ridge", "rf", "gb"):
+        raise typer.BadParameter("model must be 'ridge', 'rf' or 'gb'.")
+    if features not in ("technical", "stat", "all"):
+        raise typer.BadParameter("features must be 'technical', 'stat' or 'all'.")
+
+    data = pd.read_csv(data_csv)
+
+    df = mf.build_feature(data, features=features, option="analyze")
+    print(f"Successfully built features : {df.columns.tolist()}")
+
+    if model == "ridge":
+        out = mm.Ridge_model(df, alpha=1.0, target=target)
+
+    info: Any
+
+    model, y_pred, info = out  # out = (model, prediction, summary)
+
+    print("Model trained successfully.")
+    print(f"nSamples={info['n_samples']} | n_features={info['n_features']} | alpha={info['alpha']}")
+    print(f"intercept={info['intercept']:.6g} | RMSE={info['rmse']:.6g} | R²={info['r2']:.6g}")
+    print("Top coefficients:")
+    for t in info["top_features"]:
+        print(f"  {t['feature']:<20} {t['coef']:.6g}")
