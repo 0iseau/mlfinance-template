@@ -64,7 +64,7 @@ def features_cmd(
     data = pd.read_csv(data_csv)
     out = mf.build_feature(data, option)
 
-    path = Path("out_features.csv")
+    path = Path("output/out_features.csv")
 
     out.to_csv(path, index=False)
     print(f"CSV file created at: {path.resolve()}\n")
@@ -93,11 +93,15 @@ def train(
 
     df = mf.build_feature(data, features=features, option="analyze")
     print(f"Successfully built features for: {df.columns.tolist()}")
+    df.to_csv("out_features.csv", index=False)
 
     if model == "ridge":
         r = mm.Ridge_model(df, alpha=1.0, target=target)
 
-    result, summary = r
+    elif model == "rf":
+        r = mm.Random_Forest_Model(df, target=target)
+
+    result, importance, summary = r
 
     # Print summary
     print("Model training summary:")
@@ -106,3 +110,6 @@ def train(
     # File outputs
     path = Path("out_model.csv")
     result.to_csv(path, index=False)
+
+    path = Path("out_importance.csv")
+    importance.to_csv(path, index=False)

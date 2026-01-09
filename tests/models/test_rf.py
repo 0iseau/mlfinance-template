@@ -1,10 +1,10 @@
 import pandas as pd
 import pytest
 
-from mlfinance.models import Ridge_model
+from mlfinance.models import Random_Forest_Model
 
 
-def test_ridge_target_column_missing() -> None:
+def test_rf_target_column_missing() -> None:
     data = pd.DataFrame(
         {
             "Price": [100, 102, 101, 105, 107, 106],
@@ -15,12 +15,30 @@ def test_ridge_target_column_missing() -> None:
     )
 
     with pytest.raises(ValueError):
-        Ridge_model(data, alpha=1.0, target="returns")
+        Random_Forest_Model(data, target="returns")
 
 
-def test_ridge_output() -> None:
+def test_rf_output() -> None:
     data = pd.DataFrame(
         {
+            "Date": [
+                "2020-01-01",
+                "2020-01-02",
+                "2020-01-03",
+                "2020-01-04",
+                "2020-01-05",
+                "2020-01-06",
+                "2020-01-07",
+                "2020-01-08",
+                "2020-01-09",
+                "2020-01-10",
+                "2020-01-11",
+                "2020-01-12",
+                "2020-01-13",
+                "2020-01-14",
+                "2020-01-15",
+                "2020-01-16",
+            ],
             "Price": [
                 100,
                 102,
@@ -114,37 +132,43 @@ def test_ridge_output() -> None:
         }
     )
 
-    result, importance, summary = Ridge_model(data, alpha=1.0, target="returns")
+    result, importance, summary = Random_Forest_Model(data, target="returns")
 
     assert isinstance(result, pd.DataFrame)
     assert "y_true" in result.columns
     assert "y_pred" in result.columns
+    assert "difference" in result.columns
+    assert "abs_difference" in result.columns
+    assert len(result) >= 1
 
     assert isinstance(importance, pd.DataFrame)
     assert "feature" in importance.columns
-    assert "coef" in importance.columns
-    assert "importance_mean" in importance.columns
-    assert "importance_std" in importance.columns
+    assert "importances_mean" in importance.columns
+    assert "importances_std" in importance.columns
+    assert len(importance) >= 1
 
     assert isinstance(summary, dict)
-    assert summary["model"] == "Ridge"
+    assert summary["model"] == "Random Forest"
     assert summary["target"] == "returns"
-    assert summary["alpha"] == 1.0
+    assert summary["n_train"] >= 1
+    assert summary["n_test"] >= 1
+    assert summary["n_features"] >= 1
+    assert summary["n_estimators"] >= 1
 
 
-def test_ridge_invalid_alpha_and_target() -> None:
+def test_rf_invalid_data_and_target() -> None:
+    with pytest.raises(ValueError):
+        Random_Forest_Model([1, 2, 3], target="returns")  # type: ignore[arg-type]
+
     data = pd.DataFrame(
         {
             "Price": [100, 102, 101, 105, 107, 106],
             "High": [101, 103, 101, 105, 108, 106],
             "Low": [99, 100, 100, 104, 106, 105],
             "Volume": [200, 220, 210, 230, 240, 235],
-            "Returns_t+1": [0.02, -0.0098, 0.0396, 0.0190, -0.0093, None],
+            "Returns_t+1": [0.02, -0.0098, 0.0396, 0.0190, -0.0093, 0.01],
         }
     )
 
     with pytest.raises(ValueError):
-        Ridge_model(data, alpha=-1.0, target="returns")
-
-    with pytest.raises(ValueError):
-        Ridge_model(data, alpha=1.0, target="invalid_target")
+        Random_Forest_Model(data, target="invalid_target")
