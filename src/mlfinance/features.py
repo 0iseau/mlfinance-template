@@ -35,7 +35,7 @@ import mlfinance.math_utils as mu
 from mlfinance.validation import validate_data
 
 
-def rsi(prices: pd.Series[float], window: int = 14) -> pd.Series[float]:
+def rsi(prices: pd.Series, window: int = 14) -> pd.Series:
     """Relative Strength Index (RSI).
 
     The RSI is a momentum oscillator bounded from 0 to 100 that measures the strength of
