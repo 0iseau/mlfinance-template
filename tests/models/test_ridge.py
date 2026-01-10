@@ -114,7 +114,7 @@ def test_ridge_output() -> None:
         }
     )
 
-    result, importance, summary = Ridge_model(data, alpha=1.0, target="returns")
+    result, importance, summary, shap_values = Ridge_model(data, alpha=1.0, target="returns")
 
     assert isinstance(result, pd.DataFrame)
     assert "y_true" in result.columns
@@ -130,6 +130,7 @@ def test_ridge_output() -> None:
     assert summary["model"] == "Ridge"
     assert summary["target"] == "returns"
     assert summary["alpha"] == 1.0
+    assert shap_values is None or isinstance(shap_values, pd.DataFrame)
 
 
 def test_ridge_invalid_alpha_and_target() -> None:

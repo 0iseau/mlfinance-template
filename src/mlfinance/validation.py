@@ -1,7 +1,7 @@
 import pandas as pd
 
 
-def validate_data(data: pd.Series) -> pd.Series[float]:
+def validate_data(data: pd.Series) -> pd.Series:
     """Validate the Data series for financial indicators.
 
     Parameters

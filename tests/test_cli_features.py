@@ -226,3 +226,28 @@ def test_train_gb_defaults_and_bad_inputs(tmp_path: Path) -> None:
             ],
         )
         assert result.exit_code != 0
+
+
+def test_train_ridge_with_shap_creates_shap_output(tmp_path: Path) -> None:
+    pytest.importorskip("shap")
+
+    with runner.isolated_filesystem(temp_dir=str(tmp_path)):
+        csv_path = _write_sample_ohlcv_csv(Path("data.csv"), n=300)
+
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                str(csv_path),
+                "--model",
+                "ridge",
+                "--features",
+                "stat",
+                "--shap",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Model training summary:" in result.stdout
+        assert "SHAP values file created at:" in result.stdout
+        assert Path("out_shap_values.csv").exists()
