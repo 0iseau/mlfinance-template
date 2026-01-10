@@ -58,7 +58,8 @@ def Ridge_model(
     alpha: float,
     target: str = "returns",
     features: str = "all",
-) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, object]]:
+    shap: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, object], pd.DataFrame | None]:
     """Ridge Regression model training.
 
     Rdige regression is a linear regression with normalization
@@ -76,6 +77,7 @@ def Ridge_model(
         result (pd.DataFrame): regression results.
         importance (pd.DataFrame): feature importance.
         summary (dict): summary of model training and performance.
+        shap_values (pd.DataFrame | None): SHAP values for feature importance.
 
     """
     if not isinstance(data, pd.DataFrame):
@@ -92,6 +94,8 @@ def Ridge_model(
     y_pred = model.predict(X_test)
     if target == "direction":
         y_pred = (y_pred >= 0.5).astype(int)
+
+    shap_values = shap_analysis(X_test, X_train, model) if shap else None
 
     perm_importance = permutation_importance(
         model, X_test, y_test, n_repeats=10, random_state=0, n_jobs=-1
@@ -120,8 +124,8 @@ def Ridge_model(
         "indicators": features,
         "alpha": float(alpha),
         "n_samples": int(len(y_train) + len(y_test)),
-        "n_train": int(len(y_train)),
-        "n_test": int(len(y_test)),
+        "n_train": len(y_train),
+        "n_test": len(y_test),
         "n_features": int(X_train.shape[1]),
         "intercept": float(model.intercept_),
         "r2": float(r2_score(y_test, y_pred)),
@@ -129,14 +133,15 @@ def Ridge_model(
         "rmse": float(np.sqrt(((y_test - y_pred) ** 2).mean())),
     }
 
-    return result, importance, summary
+    return result, importance, summary, shap_values
 
 
 def Random_Forest_Model(
     data: pd.DataFrame,
     target: str = "returns",
     features: str = "all",
-) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, object]]:
+    shap: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, object], pd.DataFrame | None]:
     """Random Forest regression.
 
     Random forest regression forecasts y(t+1) at yt by "training" on past data.
@@ -153,6 +158,7 @@ def Random_Forest_Model(
         results (pd.DataFrame): regression results.
         importance (pd.DataFrame): feature importance.
         summary (dict): summary of model training and performance.
+        shap_values (pd.DataFrame | None): SHAP values for feature importance.
     """
     if not isinstance(data, pd.DataFrame):
         raise ValueError("Data must be a pandas dataframe.")
@@ -168,6 +174,8 @@ def Random_Forest_Model(
 
     if target == "direction":
         y_pred = (y_pred >= 0.5).astype(int)
+
+    shap_values = shap_analysis(X_test, X_train, model) if shap else None
 
     perm_importance = permutation_importance(
         model, X_test, y_test, n_repeats=10, random_state=0, n_jobs=-1
@@ -192,8 +200,8 @@ def Random_Forest_Model(
         "model": "Random Forest",
         "target": target,
         "indicators": features,
-        "n_test": int(len(y_test)),
-        "n_train": int(len(y_train)),
+        "n_test": len(y_test),
+        "n_train": len(y_train),
         "n_features": int(X_test.shape[1]),
         "r2": float(r2_score(y_test, y_pred)),
         "mae": float(np.mean(np.abs(y_test - y_pred))),
@@ -201,14 +209,15 @@ def Random_Forest_Model(
         "n_estimators": model.n_estimators,
     }
 
-    return result, importance, summary
+    return result, importance, summary, shap_values
 
 
 def gradient_boosting_model(
     data: pd.DataFrame,
     target: str = "returns",
     features: str = "all",
-) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, object]]:
+    shap: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, object], pd.DataFrame | None]:
     """Gradient boosting model implementation : XGBoost.
 
     Gradient boosting predicts y(t+1) at time t by training sequentially on past
@@ -225,6 +234,7 @@ def gradient_boosting_model(
         results (pd.DataFrame): regression results.
         importance (pd.DataFrame): feature importance.
         summary (dict): summary of model training and performance.
+        shap_values (pd.DataFrame | None): SHAP values for feature importance.
     """
     if not isinstance(data, pd.DataFrame):
         raise ValueError("Data must be a pandas data frame.")
@@ -235,10 +245,13 @@ def gradient_boosting_model(
 
     model = GradientBoostingRegressor(learning_rate=0.05, n_estimators=300, random_state=0)
     model.fit(X_train, y_train)
+
     y_pred = model.predict(X_test)
 
     if target == "direction":
         y_pred = (y_pred >= 0.5).astype(int)
+
+    shap_values = shap_analysis(X_test, X_train, model) if shap else None
 
     perm_importance = permutation_importance(
         model, X_test, y_test, n_repeats=10, random_state=0, n_jobs=-1
@@ -263,8 +276,8 @@ def gradient_boosting_model(
         "model": "Gradient Boosting",
         "target": target,
         "indicators": features,
-        "n_test": int(len(y_test)),
-        "n_train": int(len(y_train)),
+        "n_test": len(y_test),
+        "n_train": len(y_train),
         "n_features": int(X_test.shape[1]),
         "r2": float(r2_score(y_test, y_pred)),
         "mae": float(np.mean(np.abs(y_test - y_pred))),
@@ -274,4 +287,23 @@ def gradient_boosting_model(
         "max_depth": model.max_depth,
     }
 
-    return result, importance, summary
+    return result, importance, summary, shap_values
+
+
+def shap_analysis(x_test: pd.DataFrame, x_train: pd.DataFrame, model: object) -> pd.DataFrame:
+    """Placeholder for SHAP analyses function."""
+    try:
+        import shap  # type: ignore[import-not-found]
+    except Exception as e:
+        raise ImportError("Install shap with >uv sync --extra explain") from e
+
+    name = model.__class__.__name__.lower()
+
+    if "ridge" in name:
+        explainer = shap.LinearExplainer(model, x_train)
+        shap_values = explainer.shap_values(x_test)
+    else:
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(x_test)
+
+    return pd.DataFrame(shap_values, index=x_test.index, columns=x_test.columns)

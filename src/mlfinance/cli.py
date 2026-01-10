@@ -76,6 +76,7 @@ def train(
     target: Annotated[str, typer.Option("--target")] = "returns",
     model: Annotated[str, typer.Option("--model")] = "ridge",
     features: Annotated[str, typer.Option("--features")] = "all",
+    shap: Annotated[bool, typer.Option("--shap")] = False,
 ) -> None:
     """Train regression models."""
     if not data_csv.exists():
@@ -96,15 +97,15 @@ def train(
     print("Features file created at:", Path("out_features.csv").resolve())
 
     if model == "ridge":
-        r = mm.Ridge_model(df, alpha=1.0, target=target, features=features)
+        r = mm.Ridge_model(df, alpha=1.0, target=target, features=features, shap=shap)
 
     elif model == "rf":
-        r = mm.Random_Forest_Model(df, target=target, features=features)
+        r = mm.Random_Forest_Model(df, target=target, features=features, shap=shap)
 
     else:
-        r = mm.gradient_boosting_model(df, target=target, features=features)
+        r = mm.gradient_boosting_model(df, target=target, features=features, shap=shap)
 
-    result, importance, summary = r
+    result, importance, summary, shap_val = r
 
     # Print summary
     print("-" * 40 + "\n")
@@ -124,3 +125,9 @@ def train(
     path = Path("out_importance.csv")
     importance.to_csv(path, index=False)
     print("Feature importance file created at:", path.resolve())
+
+    if shap:
+        shap_path = Path("out_shap_values.csv")
+        if shap_val is not None:
+            shap_val.to_csv(shap_path, index=False)
+            print("SHAP values file created at:", shap_path.resolve())
