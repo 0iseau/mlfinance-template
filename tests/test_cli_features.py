@@ -92,8 +92,8 @@ def test_train_ridge_defaults_and_bad_inputs(tmp_path: Path) -> None:
         result = runner.invoke(app, ["train", str(csv_path)])
         assert result.exit_code == 0
         assert "Model training summary:" in result.stdout
-        assert "'model': 'Ridge'" in result.stdout
-        assert "'target': 'returns'" in result.stdout
+        assert "model: Ridge" in result.stdout
+        assert "target: returns" in result.stdout
 
         # Bad inputs -> ValueError (surfaced via CLI non-zero exit + message)
         result = runner.invoke(
@@ -150,8 +150,8 @@ def test_train_rf_defaults_and_bad_inputs(tmp_path: Path) -> None:
         result = runner.invoke(app, ["train", str(csv_path), "--model", "rf"])
         assert result.exit_code == 0
         assert "Model training summary:" in result.stdout
-        assert "'model': 'Random Forest'" in result.stdout
-        assert "'target': 'returns'" in result.stdout
+        assert "model: Random Forest" in result.stdout
+        assert "target: returns" in result.stdout
 
         # Bad inputs should error (same validation layer as ridge)
         result = runner.invoke(
@@ -178,6 +178,49 @@ def test_train_rf_defaults_and_bad_inputs(tmp_path: Path) -> None:
                 "invalid_target",
                 "--model",
                 "rf",
+                "--features",
+                "all",
+            ],
+        )
+        assert result.exit_code != 0
+
+
+def test_train_gb_defaults_and_bad_inputs(tmp_path: Path) -> None:
+    with runner.isolated_filesystem(temp_dir=str(tmp_path)):
+        csv_path = _write_sample_ohlcv_csv(Path("data.csv"), n=300)
+
+        # Defaults (when selecting gb): target=returns, features=all
+        result = runner.invoke(app, ["train", str(csv_path), "--model", "gb"])
+        assert result.exit_code == 0
+        assert "Model training summary:" in result.stdout
+        assert "model: Gradient Boosting" in result.stdout
+        assert "target: returns" in result.stdout
+
+        # Bad inputs should error (same validation layer as ridge/rf)
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                str(csv_path),
+                "--target",
+                "returns",
+                "--model",
+                "gb",
+                "--features",
+                "invalid_feature",
+            ],
+        )
+        assert result.exit_code != 0
+
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                str(csv_path),
+                "--target",
+                "invalid_target",
+                "--model",
+                "gb",
                 "--features",
                 "all",
             ],

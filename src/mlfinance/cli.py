@@ -67,8 +67,7 @@ def features_cmd(
     path = Path("out_features.csv")
 
     out.to_csv(path, index=False)
-    print(f"CSV file created at: {path.resolve()}\n")
-    print(f"Columns generated : {out.columns.tolist()}")
+    print(f"Features CSV file created at: {path.resolve()}\n")
 
 
 @app.command("train")  # type: ignore[misc]
@@ -89,27 +88,39 @@ def train(
         raise ValueError("model must be 'ridge', 'rf' or 'gb'.")
     if features not in ("technical", "stat", "all"):
         raise ValueError("features must be 'technical', 'stat' or 'all'.")
+
     data = pd.read_csv(data_csv)
 
     df = mf.build_feature(data, features=features, option="analyze")
-    print(f"Successfully built features for: {df.columns.tolist()}")
     df.to_csv("out_features.csv", index=False)
+    print("Features file created at:", Path("out_features.csv").resolve())
 
     if model == "ridge":
-        r = mm.Ridge_model(df, alpha=1.0, target=target)
+        r = mm.Ridge_model(df, alpha=1.0, target=target, features=features)
 
     elif model == "rf":
-        r = mm.Random_Forest_Model(df, target=target)
+        r = mm.Random_Forest_Model(df, target=target, features=features)
+
+    else:
+        r = mm.gradient_boosting_model(df, target=target, features=features)
 
     result, importance, summary = r
 
     # Print summary
+    print("-" * 40 + "\n")
     print("Model training summary:")
-    print(summary)
+    for k in sorted(summary):
+        v = summary[k]
+        if isinstance(v, float):
+            print(f"  {k}: {v:.6g}")
+        else:
+            print(f"  {k}: {v}")
 
     # File outputs
     path = Path("out_model.csv")
     result.to_csv(path, index=False)
+    print("Model results file created at:", path.resolve())
 
     path = Path("out_importance.csv")
     importance.to_csv(path, index=False)
+    print("Feature importance file created at:", path.resolve())
