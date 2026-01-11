@@ -27,11 +27,11 @@ dev = [
     "hypothesis>=6.0",
     "pandas-stubs>=2.1.4.240218",
     "types-setuptools>=69.0",
-    "TA-Lib",
     "ta",
     "scikit-learn-stubs",
 ]
 explain = ["shap>=0.49.1"]
+talib = ["TA-Lib"]
 
 [project.scripts]
 mlfinance = "mlfinance.cli:app"
@@ -85,7 +85,7 @@ disallow_untyped_defs = false
 disallow_any_unimported = false
 
 [[tool.mypy.overrides]]
-module = ["hypothesis.*", "typer.*", "numpy.*"]
+module = ["hypothesis.*", "typer.*", "numpy.*", "sklearn.*"]
 ignore_missing_imports = true
 
 # Pytest configuration
