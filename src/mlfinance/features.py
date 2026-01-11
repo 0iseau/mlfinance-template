@@ -384,7 +384,7 @@ def volatility(
     x = prices.astype(float)
 
     if kind == "log":
-        # Guard against non-positive values (will become NaN instead of -inf / warnings)
+        # Control for strictly positive prices
         x_pos = x.where(x > 0.0)
         log_x_pos = pd.Series(
             np.log(x_pos.to_numpy(dtype=float, na_value=np.nan)),
