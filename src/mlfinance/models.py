@@ -4,6 +4,8 @@ Models:
     - Ridge regression
     - Random Forest Regressor
     - Gradient Boosting
+
+Models processes are explained in their respective demonstration docs in models_demo/.
 """
 
 from __future__ import annotations
