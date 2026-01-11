@@ -44,7 +44,7 @@ def test_build_clean() -> None:
 
         _build_clean(data)
 
-        with pytest.raises(ValueError, match="Cannot find usable price column in DataFrame."):
+        with pytest.raises(ValueError, match=r"Cannot find usable price column in DataFrame\."):
             _build_clean(data)
 
     data2 = pd.DataFrame(

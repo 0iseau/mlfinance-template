@@ -255,9 +255,6 @@ Thumbs.db
 # draft files
 *.draft*
 
-# demo files
-*_demo.py
-
 # result files
 out_*
 
