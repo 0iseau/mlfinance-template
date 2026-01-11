@@ -971,44 +971,47 @@ def _build_clean(x: pd.DataFrame) -> pd.DataFrame:
     if x.empty:
         return pd.DataFrame(index=x.index, dtype=float)
 
-    # BY PRIORITY ORDER
-    usable_prices = ("Price", "price", "PRICE", "Close", "close", "CLOSE", "Open", "Open", "OPEN")
-    usable_highs = ("High", "high", "HIGH", "H", "h")
-    usable_lows = ("Low", "low", "LOW", "L", "l")
-    usable_volumes = ("Vol", "vol", "VOL", "Volume", "volume", "VOLUME")
+    def _find_col(candidates: tuple[str, ...]) -> str | None:
+        # Map lowercase -> original column name (first wins if duplicates)
+        lower_to_orig: dict[str, str] = {}
+        for col in x.columns:
+            key = str(col).lower()
+            lower_to_orig.setdefault(key, str(col))
+
+        for cand in candidates:
+            if cand in lower_to_orig:
+                return lower_to_orig[cand]
+        return None
+
+    # BY PRIORITY ORDER (case-insensitive)
+    usable_prices = ("price", "close", "open")
+    usable_highs = ("high", "h")
+    usable_lows = ("low", "l")
+    usable_volumes = ("vol", "volume")
 
     df = pd.DataFrame(index=x.index, dtype=float)
 
-    usable_dates = (
-        "Date",
-        "date",
-        "DATE",
-        "Datetime",
-        "datetime",
-        "DATETIME",
-        "Time",
-        "time",
-        "TIME",
-    )
+    usable_dates = ("date", "datetime", "time")
 
-    temp_date = next((i for i in x.columns if i in usable_dates), None)
-    temp_high = next((i for i in x.columns if i in usable_highs), None)
-    temp_low = next((i for i in x.columns if i in usable_lows), None)
-    temp_volume = next((i for i in x.columns if i in usable_volumes), None)
+    date_col = _find_col(usable_dates)
+    high_col = _find_col(usable_highs)
+    low_col = _find_col(usable_lows)
+    volume_col = _find_col(usable_volumes)
+    price_col = _find_col(usable_prices)
 
-    if temp_date is not None:
-        df["Date"] = x[temp_date]
+    if date_col is not None:
+        df["Date"] = x[date_col]
 
-    df["Price"] = x[next(i for i in x.columns if i in usable_prices)]
-    if "Price" not in df.columns:
+    if price_col is None:
         raise ValueError("Cannot find usable price column in DataFrame.")
+    df["Price"] = x[price_col]
 
-    if temp_high is not None:
-        df["High"] = x[temp_high]
-    if temp_low is not None:
-        df["Low"] = x[temp_low]
-    if temp_volume is not None:
-        df["Volume"] = x[temp_volume]
+    if high_col is not None:
+        df["High"] = x[high_col]
+    if low_col is not None:
+        df["Low"] = x[low_col]
+    if volume_col is not None:
+        df["Volume"] = x[volume_col]
 
     df["Returns_t+1"] = df["Price"].pct_change().shift(-1)
 

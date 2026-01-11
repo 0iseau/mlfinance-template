@@ -132,7 +132,7 @@ def test_gb_output() -> None:
         }
     )
 
-    result, importance, summary, shap_values = gradient_boosting_model(data, target="returns")
+    result, importance, summary, _shap_values = gradient_boosting_model(data, target="returns")
 
     assert isinstance(result, pd.DataFrame)
     assert "y_true" in result.columns

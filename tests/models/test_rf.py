@@ -132,7 +132,7 @@ def test_rf_output() -> None:
         }
     )
 
-    result, importance, summary, shap_values = Random_Forest_Model(data, target="returns")
+    result, importance, summary, _shap_values = Random_Forest_Model(data, target="returns")
 
     assert isinstance(result, pd.DataFrame)
     assert "y_true" in result.columns

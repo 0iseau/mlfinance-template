@@ -6,3 +6,9 @@ def test_import() -> None:
     import mlfinance
 
     assert mlfinance.__version__ == "0.1.0"
+
+
+def test_cli_import() -> None:
+    from mlfinance.cli import app
+
+    assert app is not None

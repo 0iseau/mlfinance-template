@@ -34,6 +34,7 @@ def _write_sample_ohlcv_csv(path: Path, n: int = 100) -> Path:
     df["Returns_t+1"] = np.log(df["close"]).diff().shift(-1)
 
     # Write CSV without dropping the index
+    path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
     return path
 
@@ -144,7 +145,7 @@ def test_train_ridge_defaults_and_bad_inputs(tmp_path: Path) -> None:
 
 def test_train_rf_defaults_and_bad_inputs(tmp_path: Path) -> None:
     with runner.isolated_filesystem(temp_dir=str(tmp_path)):
-        csv_path = _write_sample_ohlcv_csv(Path("data.csv"), n=300)
+        csv_path = _write_sample_ohlcv_csv(Path("data/raw/data.csv"), n=300)
 
         # Defaults (when selecting rf): target=returns, features=all
         result = runner.invoke(app, ["train", str(csv_path), "--model", "rf"])
@@ -187,7 +188,7 @@ def test_train_rf_defaults_and_bad_inputs(tmp_path: Path) -> None:
 
 def test_train_gb_defaults_and_bad_inputs(tmp_path: Path) -> None:
     with runner.isolated_filesystem(temp_dir=str(tmp_path)):
-        csv_path = _write_sample_ohlcv_csv(Path("data.csv"), n=300)
+        csv_path = _write_sample_ohlcv_csv(Path("data/raw/data.csv"), n=300)
 
         # Defaults (when selecting gb): target=returns, features=all
         result = runner.invoke(app, ["train", str(csv_path), "--model", "gb"])
@@ -212,6 +213,27 @@ def test_train_gb_defaults_and_bad_inputs(tmp_path: Path) -> None:
         )
         assert result.exit_code != 0
 
+
+def test_backtest_ml_pred_creates_output(tmp_path: Path) -> None:
+    with runner.isolated_filesystem(temp_dir=str(tmp_path)):
+        csv_path = _write_sample_ohlcv_csv(Path("data/raw/data.csv"), n=300)
+
+        result = runner.invoke(
+            app,
+            [
+                "backtest",
+                str(csv_path),
+                "--strategy",
+                "ml-pred",
+                "--cost",
+                "0.001",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Backtest summary:" in result.stdout
+        assert Path("results/out_backtest.csv").exists()
+
         result = runner.invoke(
             app,
             [
@@ -228,11 +250,32 @@ def test_train_gb_defaults_and_bad_inputs(tmp_path: Path) -> None:
         assert result.exit_code != 0
 
 
+def test_backtest_ma_cross_creates_output(tmp_path: Path) -> None:
+    with runner.isolated_filesystem(temp_dir=str(tmp_path)):
+        csv_path = _write_sample_ohlcv_csv(Path("data/raw/data.csv"), n=300)
+
+        result = runner.invoke(
+            app,
+            [
+                "backtest",
+                str(csv_path),
+                "--strategy",
+                "ma-cross",
+                "--cost",
+                "0.001",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Backtest summary:" in result.stdout
+        assert Path("results/out_backtest.csv").exists()
+
+
 def test_train_ridge_with_shap_creates_shap_output(tmp_path: Path) -> None:
     pytest.importorskip("shap")
 
     with runner.isolated_filesystem(temp_dir=str(tmp_path)):
-        csv_path = _write_sample_ohlcv_csv(Path("data.csv"), n=300)
+        csv_path = _write_sample_ohlcv_csv(Path("data/raw/data.csv"), n=300)
 
         result = runner.invoke(
             app,
@@ -250,4 +293,4 @@ def test_train_ridge_with_shap_creates_shap_output(tmp_path: Path) -> None:
         assert result.exit_code == 0
         assert "Model training summary:" in result.stdout
         assert "SHAP values file created at:" in result.stdout
-        assert Path("out_shap_values.csv").exists()
+        assert Path("results/out_shap_values.csv").exists()

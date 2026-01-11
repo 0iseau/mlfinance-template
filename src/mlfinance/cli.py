@@ -28,6 +28,7 @@ from typing import Annotated
 import pandas as pd
 import typer
 
+import mlfinance.backtest as mb
 import mlfinance.features as mf
 import mlfinance.models as mm
 
@@ -64,7 +65,8 @@ def features_cmd(
     data = pd.read_csv(data_csv)
     out = mf.build_feature(data, option)
 
-    path = Path("out_features.csv")
+    path = Path("results/out_features.csv")
+    path.parent.mkdir(parents=True, exist_ok=True)
 
     out.to_csv(path, index=False)
     print(f"Features CSV file created at: {path.resolve()}\n")
@@ -93,8 +95,10 @@ def train(
     data = pd.read_csv(data_csv)
 
     df = mf.build_feature(data, features=features, option="analyze")
-    df.to_csv("out_features.csv", index=False)
-    print("Features file created at:", Path("out_features.csv").resolve())
+    features_path = Path("results/out_features.csv")
+    features_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(features_path, index=False)
+    print("Features file created at:", features_path.resolve())
 
     if model == "ridge":
         r = mm.Ridge_model(df, alpha=1.0, target=target, features=features, shap=shap)
@@ -110,7 +114,7 @@ def train(
     # Print summary
     print("-" * 40 + "\n")
     print("Model training summary:")
-    for k in sorted(summary):
+    for k in summary:
         v = summary[k]
         if isinstance(v, float):
             print(f"  {k}: {v:.6g}")
@@ -118,16 +122,57 @@ def train(
             print(f"  {k}: {v}")
 
     # File outputs
-    path = Path("out_model.csv")
+    path = Path("results/out_model.csv")
+    path.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(path, index=False)
     print("Model results file created at:", path.resolve())
 
-    path = Path("out_importance.csv")
+    path = Path("results/out_importance.csv")
+    path.parent.mkdir(parents=True, exist_ok=True)
     importance.to_csv(path, index=False)
     print("Feature importance file created at:", path.resolve())
 
     if shap:
-        shap_path = Path("out_shap_values.csv")
+        shap_path = Path("results/out_shap_values.csv")
+        shap_path.parent.mkdir(parents=True, exist_ok=True)
         if shap_val is not None:
             shap_val.to_csv(shap_path, index=False)
             print("SHAP values file created at:", shap_path.resolve())
+
+
+@app.command("backtest")  # type: ignore[misc]
+def backtest(
+    data_csv: Annotated[Path, typer.Argument()],
+    strategy: Annotated[str, typer.Option("--strategy")] = "ml-pred",
+    cost: Annotated[float, typer.Option("--cost")] = 0.0,
+) -> None:
+    """Backtest a strategy on historical data."""
+    if not data_csv.exists():
+        raise typer.BadParameter("CSV file not found")
+    if cost < 0.0:
+        raise ValueError("cost must be >= 0")
+    if strategy not in ("ml-pred", "ma-cross"):
+        raise ValueError("strategy must be 'ml-pred' or 'ma-cross'.")
+
+    data = pd.read_csv(data_csv)
+
+    if strategy == "ml-pred":
+        bt_df, metrics = mb.backtest_ml_pred(data, cost=cost)
+    else:
+        bt_df, metrics = mb.backtest_ma_cross(data, cost=cost)
+
+    path = Path("results/out_backtest.csv")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    bt_df.to_csv(path, index=False)
+    print("Backtest results file created at:", path.resolve())
+
+    print("-" * 40 + "\n")
+    print("Backtest summary:")
+    for section in ("strategy", "buy_and_hold"):
+        print(f"{section}:")
+        for k in ("sharpe", "sortino", "max_drawdown"):
+            v = metrics.get(section, {}).get(k)
+            if isinstance(v, float):
+                print(f"  {k}: {v:.6g}")
+            else:
+                print(f"  {k}: {v}")
