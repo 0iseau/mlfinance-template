@@ -64,7 +64,7 @@ mlfinance features data/raw/gold_price.csv \
 # Output : results/out_features.csv, csv file with corresponding data
 
 # train model and predict
-mlfinance train data/features.csv \
+mlfinance train data/gold_price.csv \
  --target returns \
  --model rf \
  --features all \
@@ -80,7 +80,7 @@ mlfinance train data/features.csv \
 # displays shap values of trained indicators.
 
 # backtest strategy
-mlfinance backtest data/prices.csv \
+mlfinance backtest data/gold_price.csv \
  --strategy ml-pred  # or ma-cross
 # Output: results/out_backtest.csv
 
