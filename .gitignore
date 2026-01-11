@@ -254,9 +254,3 @@ Thumbs.db
 
 # draft files
 *.draft*
-
-# result files
-out_*
-
-# data files
-data_*
