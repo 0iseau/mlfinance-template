@@ -141,3 +141,15 @@ B. T. Kelly, D. Xiu (2023). *Financial Machine Learning*
 Tradingview Wiki - <https://www.tradingview.com/support/knowledge-base/>
 Investopedia Dictionary -
 <https://www.investopedia.com/financial-term-dictionary-4769738>
+
+## AI usage
+
+This project was developed with the assistance of AI-based tools, namely
+ChatGPT and GitHub Copilot. ChatGPT was used primarily as a support tool
+to clarify complex Python programming concepts (such as command line interfaces
+and pandas behavior), to understand machine learning algorithms and optimization
+techniques, and to support reasoning in finance and statistics (e.g., ridge regression,
+random forests, and gradient boosting). GitHub Copilot was used as a coding assistant
+to help design test logic, improve function architecture through helper abstractions,
+and assist with complex debugging tasks. All design decisions, implementations, and
+validations remain of my responsibility.
